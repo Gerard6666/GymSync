@@ -1,1 +1,1 @@
-print("Gerard idiota")
+print("Gerard y adam novios")
