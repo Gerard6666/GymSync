@@ -29,7 +29,7 @@
          <x>0</x>
          <y>0</y>
          <width>759</width>
-         <height>687</height>
+         <height>723</height>
         </rect>
        </property>
        <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -320,7 +320,7 @@ border-radius: 10px;</string>
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QLineEdit" name="txt_genero">
+           <widget class="QComboBox" name="cmb_genero">
             <property name="minimumSize">
              <size>
               <width>0</width>
@@ -330,9 +330,6 @@ border-radius: 10px;</string>
             <property name="styleSheet">
              <string notr="true">background-color: rgb(255, 255, 255);
 border-radius: 10px;</string>
-            </property>
-            <property name="placeholderText">
-             <string>Tu género</string>
             </property>
            </widget>
           </item>
@@ -453,6 +450,27 @@ border-radius: 10px;</string>
           </item>
           <item row="2" column="1">
            <widget class="QComboBox" name="cmb_estilo_vida">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>30</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(255, 255, 255);
+border-radius: 10px;</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="lbl_lugar_entrenamiento">
+            <property name="text">
+             <string>Lugar de entrenamiento:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QComboBox" name="cmb_lugar_entrenamiento">
             <property name="minimumSize">
              <size>
               <width>0</width>

@@ -9,7 +9,7 @@ from PyQt5 import uic
 class Usuario:
     def __init__(self, correo, contraseña, nombre=None, telefono=None, edad=None,
                  genero=None, peso=None, altura=None, objetivo=None,
-                 disponibilidad=None, estilo_vida=None):
+                 disponibilidad=None, estilo_vida=None, lugar_entrenamiento=None):
         self.correo = correo
         self.contraseña = contraseña
         self.nombre = nombre
@@ -21,6 +21,7 @@ class Usuario:
         self.objetivo = objetivo
         self.disponibilidad = disponibilidad
         self.estilo_vida = estilo_vida
+        self.lugar_entrenamiento = lugar_entrenamiento
 
         # Calcular IMC si altura y peso están disponibles
         if peso and altura:
@@ -73,9 +74,15 @@ class BaseDatosGymSync:
                 altura REAL,
                 objetivo TEXT,
                 disponibilidad TEXT,
-                estilo_vida TEXT
+                estilo_vida TEXT,
+                lugar_entrenamiento TEXT
             )
             ''')
+            cursor.execute("PRAGMA table_info(usuarios)")
+            columnas = [columna[1] for columna in cursor.fetchall()]
+
+            if 'lugar_entrenamiento' not in columnas:
+                cursor.execute('ALTER TABLE usuarios ADD COLUMN lugar_entrenamiento TEXT')
 
             # Insertar algunos usuarios de prueba si la tabla está vacía
             cursor.execute("SELECT COUNT(*) FROM usuarios")
@@ -122,8 +129,8 @@ class BaseDatosGymSync:
             # Insertar datos del usuario
             cursor.execute('''
             INSERT INTO usuarios (nombre, correo, contraseña, telefono, edad, genero, 
-                                peso, altura, objetivo, disponibilidad, estilo_vida)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                peso, altura, objetivo, disponibilidad, estilo_vida, lugar_entrenamiento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 usuario.nombre,
                 usuario.correo,
@@ -135,7 +142,8 @@ class BaseDatosGymSync:
                 usuario.altura,
                 usuario.objetivo,
                 usuario.disponibilidad,
-                usuario.estilo_vida
+                usuario.estilo_vida,
+                usuario.lugar_entrenamiento
             ))
 
             # Guardar cambios y cerrar conexión
@@ -179,7 +187,8 @@ class BaseDatosGymSync:
                     altura=datos[8],
                     objetivo=datos[9],
                     disponibilidad=datos[10],
-                    estilo_vida=datos[11]
+                    estilo_vida=datos[11],
+                    lugar_entrenamiento=datos[12] if len(datos) > 12 else None
                 )
                 return usuario
 
@@ -278,6 +287,8 @@ class RegistroScreen(QMainWindow):
         self.cargar_opciones_objetivo()
         self.cargar_disponibilidad_horaria()
         self.cargar_estilos_vida()
+        self.cargar_lugar_entrenamiento()
+        self.cargar_genero()
 
         # Conectar señales a slots
         self.setupConnections()
@@ -334,6 +345,32 @@ class RegistroScreen(QMainWindow):
         self.cmb_estilo_vida.clear()
         self.cmb_estilo_vida.addItems(estilos_vida)
 
+    def cargar_lugar_entrenamiento(self):
+        """Gestiona los lugares de entrenamiento."""
+        # En una implementación real, esto podría ser una matriz de checkboxes o un widget más complejo
+        # Para simplificar, usaremos un combobox con opciones predefinidas
+        lugar_entrenamiento = [
+            "Selecciona tu lugar de entrenamiento",
+            "Casa sin equipamiento",
+            "Casa con equipamiento",
+            "Gimnasio"
+        ]
+        self.cmb_lugar_entrenamiento.clear()
+        self.cmb_lugar_entrenamiento.addItems(lugar_entrenamiento)
+
+    def cargar_genero(self):
+        """Gestiona los géneros."""
+        # En una implementación real, esto podría ser una matriz de checkboxes o un widget más complejo
+        # Para simplificar, usaremos un combobox con opciones predefinidas
+        genero = [
+            "Selecciona tu género",
+            "Masculino",
+            "Femenino",
+            "Otro"
+        ]
+        self.cmb_genero.clear()
+        self.cmb_genero.addItems(genero)
+
     @pyqtSlot()
     def registrar_usuario(self):
         """Método principal que coordina el proceso de registro completo."""
@@ -389,7 +426,6 @@ class RegistroScreen(QMainWindow):
             "Confirmar contraseña": self.txt_confirmar_contraseña.text(),
             "Número de teléfono": self.txt_telefono.text(),
             "Edad": self.txt_edad.text(),
-            "Género": self.txt_genero.text(),
             "Peso": self.txt_peso.text(),
             "Altura": self.txt_altura.text()
         }
@@ -404,6 +440,13 @@ class RegistroScreen(QMainWindow):
                 return False
 
         # Validamos los desplegables (que no estén en la opción default)
+        if self.cmb_genero.currentIndex() == 0:
+            self.mostrar_error_validacion(
+                "Campos incompletos",
+                "Por favor, selecciona tu género."
+            )
+            return False
+
         if self.cmb_objetivo.currentIndex() == 0:
             self.mostrar_error_validacion(
                 "Campos incompletos",
@@ -422,6 +465,13 @@ class RegistroScreen(QMainWindow):
             self.mostrar_error_validacion(
                 "Campos incompletos",
                 "Por favor, selecciona tu estilo de vida."
+            )
+            return False
+
+        if self.cmb_lugar_entrenamiento.currentIndex() == 0:
+            self.mostrar_error_validacion(
+                "Campos incompletos",
+                "Por favor, selecciona tu lugar de entrenamiento."
             )
             return False
 
@@ -465,12 +515,13 @@ class RegistroScreen(QMainWindow):
             nombre=self.txt_nombre.text(),
             telefono=self.txt_telefono.text(),
             edad=int(self.txt_edad.text()),
-            genero=self.txt_genero.text(),
+            genero=self.cmb_genero.currentText(),
             peso=float(self.txt_peso.text()),
             altura=float(self.txt_altura.text()),
             objetivo=self.cmb_objetivo.currentText(),
             disponibilidad=self.cmb_disponibilidad.currentText(),
-            estilo_vida=self.cmb_estilo_vida.currentText()
+            estilo_vida=self.cmb_estilo_vida.currentText(),
+            lugar_entrenamiento=self.cmb_lugar_entrenamiento.currentText()
         )
 
     def redirigir_a_pantalla_principal(self, usuario):
