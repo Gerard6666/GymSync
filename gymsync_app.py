@@ -1,7 +1,7 @@
 import sys
 import sqlite3
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QComboBox, QCheckBox
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QComboBox, QCheckBox, QListWidgetItem
+from PyQt5.QtCore import pyqtSlot, QDateTime
 from PyQt5 import uic
 
 
@@ -60,7 +60,7 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Crear tabla de usuarios si no existe
+            # Crear tabla de usuarios con todas las columnas desde el inicio
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,27 +75,36 @@ class BaseDatosGymSync:
                 objetivo TEXT,
                 disponibilidad TEXT,
                 estilo_vida TEXT,
-                lugar_entrenamiento TEXT
+                lugar_entrenamiento TEXT,
+                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
             )
             ''')
-            cursor.execute("PRAGMA table_info(usuarios)")
-            columnas = [columna[1] for columna in cursor.fetchall()]
 
-            if 'lugar_entrenamiento' not in columnas:
+            # Verificar si existen las columnas y agregarlas solo si no existen
+            cursor.execute("PRAGMA table_info(usuarios)")
+            columnas_existentes = [columna[1] for columna in cursor.fetchall()]
+
+            # Agregar columnas faltantes solo si no existen
+            if 'lugar_entrenamiento' not in columnas_existentes:
                 cursor.execute('ALTER TABLE usuarios ADD COLUMN lugar_entrenamiento TEXT')
+
+            if 'fecha_registro' not in columnas_existentes:
+                cursor.execute('ALTER TABLE usuarios ADD COLUMN fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP')
 
             # Insertar algunos usuarios de prueba si la tabla está vacía
             cursor.execute("SELECT COUNT(*) FROM usuarios")
             if cursor.fetchone()[0] == 0:
+                # Usar DATETIME('now') para SQLite
                 cursor.execute('''
-                INSERT INTO usuarios (nombre, correo, contraseña)
+                INSERT INTO usuarios (nombre, correo, contraseña, peso, altura, objetivo, fecha_registro)
                 VALUES 
-                    ("Usuario de Prueba", "usuario@ejemplo.com", "contraseña123"),
-                    ("Usuario de Test", "test@gymsync.com", "test123")
+                    ("Usuario de Prueba", "usuario@ejemplo.com", "contraseña123", 70.0, 175.0, "Mantener peso", DATETIME('now')),
+                    ("Usuario de Test", "test@gymsync.com", "test123", 65.0, 160.0, "Adelgazar", DATETIME('now'))
                 ''')
 
             conn.commit()
             conn.close()
+            print("Base de datos inicializada correctamente")
 
         except Exception as e:
             print(f"Error al inicializar la base de datos: {str(e)}")
@@ -126,11 +135,12 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Insertar datos del usuario
+            # Insertar datos del usuario con fecha actual
             cursor.execute('''
             INSERT INTO usuarios (nombre, correo, contraseña, telefono, edad, genero, 
-                                peso, altura, objetivo, disponibilidad, estilo_vida, lugar_entrenamiento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                peso, altura, objetivo, disponibilidad, estilo_vida, 
+                                lugar_entrenamiento, fecha_registro)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATETIME('now'))
             ''', (
                 usuario.nombre,
                 usuario.correo,
@@ -175,7 +185,7 @@ class BaseDatosGymSync:
             conn.close()
 
             if datos:
-                # Asumimos que el orden de las columnas coincide con la estructura de Usuario
+                # Crear usuario con los datos recuperados
                 usuario = Usuario(
                     correo=datos[2],
                     contraseña=datos[3],
@@ -197,6 +207,44 @@ class BaseDatosGymSync:
         except Exception as e:
             print(f"Error al recuperar usuario: {str(e)}")
             return None
+
+    def calcular_dias_uso(self, correo):
+        """Calcula los días desde el registro del usuario."""
+        try:
+            conn = sqlite3.connect(self.db_nombre)
+            cursor = conn.cursor()
+
+            # Verificar si la columna fecha_registro existe
+            cursor.execute("PRAGMA table_info(usuarios)")
+            columnas = [columna[1] for columna in cursor.fetchall()]
+
+            if 'fecha_registro' not in columnas:
+                conn.close()
+                return 1  # Si no existe la columna, devolver 1 día
+
+            cursor.execute(
+                "SELECT fecha_registro FROM usuarios WHERE correo = ?",
+                (correo,)
+            )
+
+            resultado = cursor.fetchone()
+            conn.close()
+
+            if resultado and resultado[0]:
+                from datetime import datetime
+                try:
+                    fecha_registro = datetime.strptime(resultado[0], '%Y-%m-%d %H:%M:%S')
+                    dias_uso = (datetime.now() - fecha_registro).days
+                    return max(1, dias_uso)  # Mínimo 1 día
+                except ValueError:
+                    # Si hay error en el formato de fecha, devolver 1 día
+                    return 1
+
+            return 1  # Si no hay fecha, devolver 1 día
+
+        except Exception as e:
+            print(f"Error al calcular días de uso: {str(e)}")
+            return 1
 
 
 class LoginScreen(QMainWindow):
@@ -240,7 +288,7 @@ class LoginScreen(QMainWindow):
 
             QMessageBox.information(self, "Éxito", f"Bienvenido a GymSync, {nombre_mostrar}")
             # En una aplicación real, aquí se cargaría la pantalla principal
-            # self.abrir_pantalla_principal(usuario)
+            self.abrir_pantalla_principal(usuario)
         else:
             # Credenciales incorrectas
             self.mostrar_error_autenticacion()
@@ -268,6 +316,15 @@ class LoginScreen(QMainWindow):
         self.registro_screen = RegistroScreen(self)
         self.registro_screen.show()
         self.hide()
+
+    def abrir_pantalla_principal(self, usuario):
+        """Abre la pantalla principal con los datos del usuario."""
+        try:
+            self.main_screen = MainScreen(usuario)
+            self.main_screen.show()
+            self.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al abrir la pantalla principal: {str(e)}")
 
 
 class RegistroScreen(QMainWindow):
@@ -537,9 +594,9 @@ class RegistroScreen(QMainWindow):
         )
 
         # Código para cambiar de pantalla (comentado porque depende de la estructura de la app)
-        # self.main_window = MainScreen(usuario)
-        # self.main_window.show()
-        # self.close()
+        self.main_window = MainScreen(usuario)
+        self.main_window.show()
+        self.close()
 
     def mostrar_error_validacion(self, tipo_error, mensaje):
         """Muestra errores específicos cuando la validación falla."""
@@ -555,6 +612,299 @@ class RegistroScreen(QMainWindow):
             self.login_window = LoginScreen()
             self.login_window.show()
             self.close()
+
+
+class MainScreen(QMainWindow):
+    def __init__(self, usuario):
+        super(MainScreen, self).__init__()
+
+        # Guardar referencia al usuario logueado
+        self.usuario = usuario
+
+        # Cargar el archivo UI de la pantalla principal
+        uic.loadUi("main_screen.ui", self)
+
+        # Inicializar el servicio de base de datos
+        self.db_service = BaseDatosGymSync()
+
+        # Configurar la pantalla con los datos del usuario
+        self.configurar_pantalla_usuario()
+
+        # Conectar señales a slots
+        self.setupConnections()
+
+    def setupConnections(self):
+        """Configura las conexiones entre los widgets y los métodos."""
+        # Conectar botones de la interfaz
+        self.btn_datos_perfil.clicked.connect(self.abrir_datos_perfil)
+        self.btn_expandir_progreso.clicked.connect(self.expandir_progreso)
+
+    def configurar_pantalla_usuario(self):
+        """Configura todos los elementos de la pantalla con los datos del usuario."""
+        # Configurar información del perfil
+        self.configurar_seccion_perfil()
+
+        # Configurar sección de progreso
+        self.configurar_seccion_progreso()
+
+        # Configurar sesión de entrenamiento actual
+        self.configurar_sesion_actual()
+
+        # Configurar próximas sesiones
+        self.configurar_proximas_sesiones()
+
+        # Configurar notificaciones
+        self.configurar_notificaciones()
+
+    def configurar_seccion_perfil(self):
+        """Configura la sección del perfil del usuario."""
+        # Establecer el correo del usuario
+        self.lbl_correo_usuario.setText(self.usuario.correo)
+
+        # Configurar avatar (por ahora texto, después se puede cambiar por imagen)
+        iniciales = self.obtener_iniciales(self.usuario.nombre)
+        self.lbl_avatar_usuario.setText(iniciales)
+
+    def configurar_seccion_progreso(self):
+        """Configura la sección de progreso del usuario."""
+        #Calcular días de uso
+        dias_uso = self.db_service.calcular_dias_uso(self.usuario.correo)
+        self.lbl_dias_uso.setText(str(dias_uso))
+
+        # Calcular días para siguiente nivel (ejemplo: cada 30 días es un nivel)
+        dias_siguiente_nivel = 30 - (dias_uso % 30)
+        if dias_siguiente_nivel == 30:
+            dias_siguiente_nivel = 0
+        self.lbl_dias_siguiente_nivel.setText(str(dias_siguiente_nivel))
+
+        # Mostrar diferencia de peso (simulado por ahora)
+        diferencia_peso = self.calcular_diferencia_peso()
+        self.lbl_diferencia_peso.setText(diferencia_peso)
+
+    def configurar_sesion_actual(self):
+        """Configura la sesión de entrenamiento actual."""
+        # Obtener día actual
+        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dia_actual = QDateTime.currentDateTime().date().dayOfWeek()
+        nombre_dia = dias_semana[dia_actual - 1]
+
+        self.lbl_dia_actual.setText(nombre_dia)
+
+        # Configurar tipo de sesión según el día y objetivo del usuario
+        tipo_sesion = self.obtener_tipo_sesion(dia_actual)
+        self.lbl_tipo_sesion_actual.setText(tipo_sesion)
+
+        # Configurar ejercicios de la sesión actual
+        self.configurar_ejercicios_actuales(tipo_sesion)
+
+    def configurar_proximas_sesiones(self):
+        """Configura las próximas sesiones de entrenamiento."""
+        dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dia_actual = QDateTime.currentDateTime().date().dayOfWeek()
+
+        # Configurar próxima sesión 1 (mañana)
+        dia_proximo1 = (dia_actual % 7) + 1
+        nombre_dia1 = dias_semana[dia_proximo1 - 1]
+        self.lbl_dia_proximo1.setText(nombre_dia1)
+        tipo_sesion1 = self.obtener_tipo_sesion(dia_proximo1)
+        self.lbl_tipo_sesion_proximo1.setText(tipo_sesion1)
+
+        #Configurar próxima sesión 2 (pasado mañana)
+        dia_proximo2 = ((dia_actual + 1) % 7) + 1
+        nombre_dia2 = dias_semana[dia_proximo2 - 1]
+        self.lbl_dia_proximo2.setText(nombre_dia2)
+        tipo_sesion2 = self.obtener_tipo_sesion(dia_proximo2)
+        self.lbl_tipo_sesion_proximo2.setText(tipo_sesion2)
+
+    def configurar_notificaciones(self):
+        """Configura las notificaciones personalizadas."""
+        notificaciones = self.generar_notificaciones_personalizadas()
+
+        if len(notificaciones) > 0:
+            self.lbl_notif_1.setText(f"• {notificaciones[0]}")
+        if len(notificaciones) > 1:
+            self.lbl_notif_2.setText(f"• {notificaciones[1]}")
+        if len(notificaciones) > 2:
+            self.lbl_notif_3.setText(f"• {notificaciones[2]}")
+
+    def obtener_iniciales(self, nombre):
+        """Obtiene las iniciales del nombre del usuario."""
+        if not nombre:
+            return "US"
+
+        palabras = nombre.split()
+        if len(palabras) >= 2:
+            return f"{palabras[0][0]}{palabras[1][0]}".upper()
+        else:
+            return palabras[0][:2].upper()
+
+    def calcular_diferencia_peso(self):
+        """Calcula la diferencia de peso (simulado por ahora)."""
+        # En una implementación real, esto vendría de un historial de pesos
+        # Por ahora, simularemos basándose en el objetivo
+        if self.usuario.objetivo == "Adelgazar":
+            return "-2.3 kg"
+        elif self.usuario.objetivo == "Ganar masa muscular":
+            return "+1.8 kg"
+        else:
+            return "0.0 kg"
+
+    def obtener_tipo_sesion(self, dia):
+        """Obtiene el tipo de sesión según el día y objetivo del usuario."""
+        tipos_push_pull_legs = {
+            1: "PULL DAY",  # Lunes
+            2: "PUSH DAY",  # Martes
+            3: "LEGS DAY",  # Miércoles
+            4: "PULL DAY",  # Jueves
+            5: "PUSH DAY",  # Viernes
+            6: "CARDIO",  # Sábado
+            7: "DESCANSO"  # Domingo
+        }
+
+        tipos_cardio = {
+            1: "CARDIO HIIT",
+            2: "FUERZA",
+            3: "CARDIO BAJO",
+            4: "FUERZA",
+            5: "CARDIO HIIT",
+            6: "YOGA",
+            7: "DESCANSO"
+        }
+
+        if self.usuario.objetivo in ["Adelgazar", "Mejorar resistencia"]:
+            return tipos_cardio.get(dia, "ENTRENAMIENTO")
+        else:
+            return tipos_push_pull_legs.get(dia, "ENTRENAMIENTO")
+
+    def configurar_ejercicios_actuales(self, tipo_sesion):
+        """Configura la lista de ejercicios para la sesión actual."""
+        ejercicios = self.obtener_ejercicios_por_tipo(tipo_sesion)
+
+        # Limpiar la lista actual
+        self.lista_ejercicios_actuales.clear()
+
+        # Agregar ejercicios a la lista
+        for ejercicio in ejercicios:
+            item = QListWidgetItem(ejercicio)
+            self.lista_ejercicios_actuales.addItem(item)
+
+    def obtener_ejercicios_por_tipo(self, tipo_sesion):
+        """Retorna una lista de ejercicios según el tipo de sesión."""
+        ejercicios_por_tipo = {
+            "PULL DAY": [
+                "Pull-ups - 3x8-12",
+                "Remo con barra - 3x8-10",
+                "Dominadas asistidas - 3x6-8",
+                "Curl de bíceps - 3x10-12",
+                "Remo con mancuernas - 3x8-10"
+            ],
+            "PUSH DAY": [
+                "Press de banca - 3x8-10",
+                "Press militar - 3x8-10",
+                "Flexiones - 3x10-15",
+                "Fondos en paralelas - 3x8-12",
+                "Press inclinado - 3x8-10"
+            ],
+            "LEGS DAY": [
+                "Sentadillas - 3x10-12",
+                "Peso muerto - 3x6-8",
+                "Prensa de piernas - 3x12-15",
+                "Zancadas - 3x10 c/pierna",
+                "Elevación de gemelos - 3x15-20"
+            ],
+            "CARDIO HIIT": [
+                "Calentamiento - 5 min",
+                "Burpees - 30s ON/30s OFF x8",
+                "Mountain climbers - 30s ON/30s OFF x8",
+                "Jumping jacks - 30s ON/30s OFF x8",
+                "Enfriamiento - 5 min"
+            ],
+            "CARDIO BAJO": [
+                "Caminata rápida - 30 min",
+                "Bicicleta estática - 20 min",
+                "Elíptica - 15 min",
+                "Estiramientos - 10 min"
+            ],
+            "FUERZA": [
+                "Sentadilla con peso - 4x6-8",
+                "Press de banca - 4x6-8",
+                "Peso muerto - 4x5-6",
+                "Press militar - 3x6-8",
+                "Remo con barra - 3x6-8"
+            ],
+            "DESCANSO": [
+                "Día de descanso activo",
+                "Estiramientos suaves - 15 min",
+                "Caminata ligera - 20 min",
+                "Movilidad articular - 10 min"
+            ]
+        }
+
+        return ejercicios_por_tipo.get(tipo_sesion, ["Entrenamiento personalizado"])
+
+    def generar_notificaciones_personalizadas(self):
+        """Genera notificaciones personalizadas según el usuario."""
+        notificaciones = []
+
+        # Notificación basada en el objetivo
+        if self.usuario.objetivo == "Adelgazar":
+            notificaciones.append("RECORDATORIO: Mantén tu déficit calórico")
+        elif self.usuario.objetivo == "Ganar masa muscular":
+            notificaciones.append("TIP: Consume suficiente proteína hoy")
+        else:
+            notificaciones.append("MOTIVACIÓN: ¡Sigue así, lo estás haciendo genial!")
+
+        # Notificación basada en el IMC
+        if hasattr(self.usuario, 'categoria_imc'):
+            if self.usuario.categoria_imc == "Sobrepeso":
+                notificaciones.append("SALUD: Considera aumentar tu actividad cardiovascular")
+            elif self.usuario.categoria_imc == "Bajo peso":
+                notificaciones.append("NUTRICIÓN: Asegúrate de comer suficientes calorías")
+
+        # Notificación general
+        notificaciones.append("HYDRATACIÓN: Recuerda beber agua regularmente")
+
+        return notificaciones[:3]  # Máximo 3 notificaciones
+
+    @pyqtSlot()
+    def abrir_datos_perfil(self):
+        """Abre una ventana con los datos detallados del perfil."""
+        datos_perfil = f"""
+        DATOS DEL PERFIL
+
+        Nombre: {self.usuario.nombre}
+        Correo: {self.usuario.correo}
+        Teléfono: {self.usuario.telefono}
+        Edad: {self.usuario.edad} años
+        Género: {self.usuario.genero}
+        Peso: {self.usuario.peso} kg
+        Altura: {self.usuario.altura} cm
+
+        OBJETIVOS Y PREFERENCIAS
+
+        Objetivo: {self.usuario.objetivo}
+        Disponibilidad: {self.usuario.disponibilidad}
+        Estilo de vida: {self.usuario.estilo_vida}
+        Lugar de entrenamiento: {self.usuario.lugar_entrenamiento}
+        """
+
+        if hasattr(self.usuario, 'imc'):
+            datos_perfil += f"\nIMC: {self.usuario.imc} ({self.usuario.categoria_imc})"
+
+        if hasattr(self.usuario, 'recomendacion'):
+            datos_perfil += f"\nRecomendación: {self.usuario.recomendacion}"
+
+        QMessageBox.information(self, "Datos del Perfil", datos_perfil)
+
+    @pyqtSlot()
+    def expandir_progreso(self):
+        """Muestra el progreso detallado del usuario."""
+        dias_uso = self.db_service.calcular_dias_uso(self.usuario.correo)
+        nivel_actual = (dias_uso // 30) + 1
+
+
+    
+
 
 
 # Clase principal para manejar la navegación entre pantallas
