@@ -6,7 +6,6 @@ from PyQt5 import uic
 from datetime import datetime
 
 
-# Estas clases representan el modelo y servicios
 class Usuario:
     def __init__(self, correo, contraseña, nombre=None, telefono=None, edad=None,
                  genero=None, peso=None, altura=None, objetivo=None,
@@ -30,7 +29,6 @@ class Usuario:
             altura_m = altura / 100  # Convertir cm a m
             self.imc = round(peso / (altura_m * altura_m), 2)
 
-            # Determinar categoría de IMC
             if self.imc < 18.5:
                 self.categoria_imc = 'Bajo peso'
             elif self.imc < 25:
@@ -39,17 +37,6 @@ class Usuario:
                 self.categoria_imc = 'Sobrepeso'
             else:
                 self.categoria_imc = 'Obesidad'
-
-            # Generar recomendaciones básicas según el objetivo
-            if objetivo == 'Adelgazar':
-                self.recomendacion = 'Enfoque en déficit calórico y ejercicio cardiovascular'
-            elif objetivo == 'Ganar masa muscular':
-                self.recomendacion = 'Enfoque en superávit calórico y entrenamiento de fuerza'
-            elif objetivo == 'Mantener peso':
-                self.recomendacion = 'Equilibrio entre ingesta calórica y ejercicio regular'
-            else:
-                self.recomendacion = 'Programa personalizado según objetivo específico'
-
 
 import sqlite3
 from datetime import datetime
@@ -85,19 +72,15 @@ class BaseDatosGymSync:
             )
             ''')
 
-            # Verificar qué columnas existen
             cursor.execute("PRAGMA table_info(usuarios)")
             columnas = [columna[1] for columna in cursor.fetchall()]
 
-            # Agregar columna lugar_entrenamiento si no existe
             if 'lugar_entrenamiento' not in columnas:
                 cursor.execute('ALTER TABLE usuarios ADD COLUMN lugar_entrenamiento TEXT')
 
-            # Agregar columna fecha_registro si no existe
             if 'fecha_registro' not in columnas:
                 cursor.execute('ALTER TABLE usuarios ADD COLUMN fecha_registro DATETIME')
 
-                # Actualizar registros existentes con fecha actual
                 cursor.execute('''
                     UPDATE usuarios 
                     SET fecha_registro = DATETIME('now') 
@@ -135,20 +118,16 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Verificar si el usuario ya existe
             cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (usuario.correo,))
             if cursor.fetchone():
                 conn.close()
                 print(f"El usuario con correo {usuario.correo} ya existe")
                 return False
-
-            # Usar fecha actual si no se proporciona
             if hasattr(usuario, 'fecha_registro') and usuario.fecha_registro:
                 fecha_registro = usuario.fecha_registro
             else:
                 fecha_registro = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # Insertar datos del usuario
             cursor.execute('''
             INSERT INTO usuarios (nombre, correo, contraseña, telefono, edad, genero, 
                                 peso, altura, objetivo, disponibilidad, estilo_vida, lugar_entrenamiento, fecha_registro)
@@ -169,7 +148,6 @@ class BaseDatosGymSync:
                 fecha_registro
             ))
 
-            # Guardar cambios y cerrar conexión
             conn.commit()
             conn.close()
 
@@ -188,14 +166,12 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Verificar que el usuario existe
             cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (usuario.correo,))
             if not cursor.fetchone():
                 conn.close()
                 print(f"El usuario con correo {usuario.correo} no existe")
                 return False
 
-            # Actualizar datos del usuario
             cursor.execute('''
             UPDATE usuarios SET 
                 nombre = ?,
@@ -224,14 +200,11 @@ class BaseDatosGymSync:
                 usuario.lugar_entrenamiento,
                 usuario.correo  # WHERE correo = ?
             ))
-
-            # Verificar que se actualizó al menos un registro
             if cursor.rowcount == 0:
                 conn.close()
                 print(f"No se pudo actualizar el usuario con correo {usuario.correo}")
                 return False
 
-            # Guardar cambios y cerrar conexión
             conn.commit()
             conn.close()
 
@@ -257,8 +230,6 @@ class BaseDatosGymSync:
             conn.close()
 
             if datos:
-                # Crear usuario con todos los datos disponibles
-                # Asumiendo que tienes una clase Usuario importada
                 usuario = Usuario(
                     correo=datos[2],
                     contraseña=datos[3],
@@ -288,13 +259,12 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Verificar si la columna fecha_registro existe
             cursor.execute("PRAGMA table_info(usuarios)")
             columnas = [columna[1] for columna in cursor.fetchall()]
 
             if 'fecha_registro' not in columnas:
                 conn.close()
-                return 1  # Si no existe la columna, devolver 1 día
+                return 1
 
             cursor.execute(
                 "SELECT fecha_registro FROM usuarios WHERE correo = ?",
@@ -306,10 +276,7 @@ class BaseDatosGymSync:
 
             if resultado and resultado[0]:
                 try:
-                    # Intentar diferentes formatos de fecha
                     fecha_str = resultado[0]
-
-                    # Formatos posibles
                     formatos = [
                         '%Y-%m-%d %H:%M:%S',
                         '%Y-%m-%d %H:%M:%S.%f',  # Con microsegundos
@@ -317,7 +284,6 @@ class BaseDatosGymSync:
                         '%d/%m/%Y %H:%M:%S',
                         '%d/%m/%Y'
                     ]
-
                     fecha_registro = None
                     for formato in formatos:
                         try:
@@ -342,264 +308,29 @@ class BaseDatosGymSync:
                 except Exception:
                     return 1
 
-            return 1  # Si no hay fecha, devolver 1 día
+            return 1
 
         except Exception:
             return 1
-
-    def debug_usuario_fechas(self, correo):
-        """Método para debug - mostrar información de fechas del usuario."""
-        try:
-            conn = sqlite3.connect(self.db_nombre)
-            cursor = conn.cursor()
-
-            cursor.execute(
-                "SELECT nombre, correo, fecha_registro FROM usuarios WHERE correo = ?",
-                (correo,)
-            )
-
-            resultado = cursor.fetchone()
-            conn.close()
-
-            if resultado:
-                print(f"\n=== DEBUG USUARIO ===")
-                print(f"Nombre: {resultado[0]}")
-                print(f"Correo: {resultado[1]}")
-                print(f"Fecha registro (raw): {resultado[2]}")
-                print(f"Tipo de dato: {type(resultado[2])}")
-
-                if resultado[2]:
-                    try:
-                        fecha_registro = datetime.strptime(resultado[2], '%Y-%m-%d %H:%M:%S')
-                        fecha_actual = datetime.now()
-                        diferencia = fecha_actual - fecha_registro
-
-                        print(f"Fecha registro (parsed): {fecha_registro}")
-                        print(f"Fecha actual: {fecha_actual}")
-                        print(f"Diferencia total: {diferencia}")
-                        print(f"Días: {diferencia.days}")
-                        print(f"Segundos: {diferencia.seconds}")
-                        print(f"Total segundos: {diferencia.total_seconds()}")
-                        print("=====================\n")
-
-                    except ValueError as e:
-                        print(f"Error al parsear fecha: {e}")
-            else:
-                print(f"Usuario {correo} no encontrado")
-
-        except Exception as e:
-            print(f"Error en debug: {str(e)}")
-
-    def actualizar_fecha_usuario(self, correo, nueva_fecha=None):
-        """Actualizar manualmente la fecha de registro de un usuario."""
-        try:
-            conn = sqlite3.connect(self.db_nombre)
-            cursor = conn.cursor()
-
-            if nueva_fecha is None:
-                nueva_fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-            cursor.execute(
-                "UPDATE usuarios SET fecha_registro = ? WHERE correo = ?",
-                (nueva_fecha, correo)
-            )
-
-            if cursor.rowcount > 0:
-                conn.commit()
-                conn.close()
-                print(f"Fecha actualizada para {correo}: {nueva_fecha}")
-                return True
-            else:
-                conn.close()
-                print(f"Usuario {correo} no encontrado")
-                return False
-
-        except Exception:
-            return False
-        """Método auxiliar para recrear la tabla con la estructura correcta."""
-        try:
-            conn = sqlite3.connect(self.db_nombre)
-            cursor = conn.cursor()
-
-            # Respaldar datos existentes
-            cursor.execute("SELECT * FROM usuarios")
-            datos_existentes = cursor.fetchall()
-
-            # Eliminar tabla actual
-            cursor.execute("DROP TABLE IF EXISTS usuarios")
-
-            # Crear nueva tabla con estructura correcta
-            cursor.execute('''
-            CREATE TABLE usuarios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL,
-                correo TEXT UNIQUE NOT NULL,
-                contraseña TEXT NOT NULL,
-                telefono TEXT,
-                edad INTEGER,
-                genero TEXT,
-                peso REAL,
-                altura REAL,
-                objetivo TEXT,
-                disponibilidad TEXT,
-                estilo_vida TEXT,
-                lugar_entrenamiento TEXT,
-                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            ''')
-
-            # Restaurar datos existentes con fecha actual para los que no la tengan
-            fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            for dato in datos_existentes:
-                # Ajustar según la cantidad de columnas que tengas
-                if len(dato) < 14:  # Si no tiene fecha_registro
-                    dato = list(dato) + [fecha_actual]
-
-                cursor.execute('''
-                INSERT INTO usuarios (id, nombre, correo, contraseña, telefono, edad, genero, 
-                                    peso, altura, objetivo, disponibilidad, estilo_vida, 
-                                    lugar_entrenamiento, fecha_registro)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', dato)
-
-            conn.commit()
-            conn.close()
-            print("Tabla recreada exitosamente")
-
-        except Exception:
-            pass
-
-
-# Función auxiliar para migrar base de datos existente
-def migrar_base_datos():
-    """Función para migrar una base de datos existente que presenta el error."""
-    db = BaseDatosGymSync()
-    db.recrear_tabla_usuarios()
-
-
-# Función auxiliar para testing y debug
-def test_fechas():
-    """Función para probar el cálculo de días."""
-    db = BaseDatosGymSync()
-
-    # Probar con usuario existente
-    correo_test = "usuario@ejemplo.com"
-
-    print("=== TESTING FECHAS ===")
-    db.debug_usuario_fechas(correo_test)
-
-    dias = db.calcular_dias_uso(correo_test)
-    print(f"Días de uso calculados: {dias}")
-
-
-# Agregar este método a la clase BaseDatosGymSync
-
-def actualizar_usuario(self, usuario):
-    """
-    Actualiza los datos de un usuario existente en la base de datos.
-
-    Args:
-        usuario: Objeto Usuario con los datos actualizados
-
-    Returns:
-        bool: True si la actualización fue exitosa, False en caso contrario
-    """
-    try:
-        # Conectar a la base de datos
-        conexion = sqlite3.connect(self.db_path)
-        cursor = conexion.cursor()
-
-        # Preparar la consulta de actualización
-        consulta_update = """
-        UPDATE usuarios SET 
-            nombre = ?,
-            telefono = ?,
-            edad = ?,
-            genero = ?,
-            peso = ?,
-            altura = ?,
-            objetivo = ?,
-            disponibilidad = ?,
-            estilo_vida = ?,
-            lugar_entrenamiento = ?,
-            contraseña = ?,
-            fecha_actualizacion = ?
-        WHERE correo = ?
-        """
-
-        # Obtener la fecha actual
-        from datetime import datetime
-        fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Ejecutar la consulta
-        cursor.execute(consulta_update, (
-            usuario.nombre,
-            usuario.telefono,
-            usuario.edad,
-            usuario.genero,
-            usuario.peso,
-            usuario.altura,
-            usuario.objetivo,
-            usuario.disponibilidad,
-            usuario.estilo_vida,
-            usuario.lugar_entrenamiento,
-            usuario.contraseña,
-            fecha_actual,
-            usuario.correo  # WHERE condition
-        ))
-
-        # Confirmar los cambios
-        conexion.commit()
-
-        # Verificar que se actualizó al menos una fila
-        if cursor.rowcount > 0:
-            print(f"Usuario {usuario.correo} actualizado correctamente")
-            return True
-        else:
-            print(f"No se encontró el usuario {usuario.correo} para actualizar")
-            return False
-
-    except sqlite3.Error as e:
-        print(f"Error al actualizar usuario: {e}")
-        return False
-
-    except Exception as e:
-        print(f"Error inesperado al actualizar usuario: {e}")
-        return False
-
-    finally:
-        # Cerrar la conexión
-        if conexion:
-            conexion.close()
 
 class LoginScreen(QMainWindow):
     def __init__(self):
         super(LoginScreen, self).__init__()
 
-        # Cargar el archivo UI diseñado con Qt Designer
         uic.loadUi("login_screen.ui", self)
 
-        # Inicializar el servicio de base de datos
         self.db_service = BaseDatosGymSync()
 
-        # Conectar señales a slots
         self.setupConnections()
 
     def setupConnections(self):
         """Configura las conexiones entre los widgets y los métodos."""
-        # Los nombres de los objetos en el archivo UI son:
-        # - btn_iniciar_sesion: para el botón "Iniciar sesión"
-        # - lnk_registrate: para el enlace "Regístrate"
-        # - txt_correo: para el campo de correo
-        # - txt_contraseña: para el campo de contraseña
-
         self.btn_iniciar_sesion.clicked.connect(self.iniciar_sesion)
         self.lnk_registrate.linkActivated.connect(self.abrir_pantalla_registro)
 
     @pyqtSlot()
     def iniciar_sesion(self):
         """Se ejecuta al hacer clic en el botón 'Iniciar sesión'."""
-        # Verificamos que los campos no estén vacíos
         if not self.comprobar_campos_requeridos():
             return
 
@@ -607,15 +338,12 @@ class LoginScreen(QMainWindow):
         contraseña = self.txt_contraseña.text()
 
         if self.db_service.validar_credenciales(correo, contraseña):
-            # Usuario autenticado correctamente
             usuario = self.db_service.obtener_usuario_por_correo(correo)
             nombre_mostrar = usuario.nombre if usuario and usuario.nombre else correo
 
             QMessageBox.information(self, "Éxito", f"Bienvenido a GymSync, {nombre_mostrar}")
-            # En una aplicación real, aquí se cargaría la pantalla principal
             self.abrir_pantalla_principal(usuario)
         else:
-            # Credenciales incorrectas
             self.mostrar_error_autenticacion()
 
     def comprobar_campos_requeridos(self):
@@ -656,31 +384,22 @@ class RegistroScreen(QMainWindow):
     def __init__(self, login_screen=None):
         super(RegistroScreen, self).__init__()
 
-        # Guardar referencia a la pantalla de login para volver a ella
         self.login_screen = login_screen
 
-        # Cargar el archivo UI diseñado con Qt Designer
         uic.loadUi("registro_screen.ui", self)
 
-        # Inicializar el servicio de base de datos
         self.db_service = BaseDatosGymSync()
 
-        # Cargar las opciones de los desplegables
         self.cargar_opciones_objetivo()
         self.cargar_disponibilidad_horaria()
         self.cargar_estilos_vida()
         self.cargar_lugar_entrenamiento()
         self.cargar_genero()
 
-        # Conectar señales a slots
         self.setupConnections()
 
     def setupConnections(self):
         """Configura las conexiones entre los widgets y los métodos."""
-        # Suponiendo que los nombres de los objetos en el archivo UI son:
-        # - btn_guardar: para el botón "GUARDAR"
-        # - btn_salir: para el icono de salida
-
         self.btn_guardar.clicked.connect(self.registrar_usuario)
         self.btn_salir.clicked.connect(self.volver_a_login)
 
@@ -700,8 +419,6 @@ class RegistroScreen(QMainWindow):
 
     def cargar_disponibilidad_horaria(self):
         """Gestiona las opciones de disponibilidad para cada día de la semana."""
-        # En una implementación real, esto podría ser una matriz de checkboxes o un widget más complejo
-        # Para simplificar, usaremos un combobox con opciones predefinidas
         disponibilidad = [
             "Selecciona tu disponibilidad",
             "Lunes a Viernes (mañanas)",
@@ -729,8 +446,6 @@ class RegistroScreen(QMainWindow):
 
     def cargar_lugar_entrenamiento(self):
         """Gestiona los lugares de entrenamiento."""
-        # En una implementación real, esto podría ser una matriz de checkboxes o un widget más complejo
-        # Para simplificar, usaremos un combobox con opciones predefinidas
         lugar_entrenamiento = [
             "Selecciona tu lugar de entrenamiento",
             "Casa sin equipamiento",
@@ -742,8 +457,6 @@ class RegistroScreen(QMainWindow):
 
     def cargar_genero(self):
         """Gestiona los géneros."""
-        # En una implementación real, esto podría ser una matriz de checkboxes o un widget más complejo
-        # Para simplificar, usaremos un combobox con opciones predefinidas
         genero = [
             "Selecciona tu género",
             "Masculino",
@@ -756,11 +469,9 @@ class RegistroScreen(QMainWindow):
     @pyqtSlot()
     def registrar_usuario(self):
         """Método principal que coordina el proceso de registro completo."""
-        # Primero validamos todos los campos obligatorios
         if not self.validar_campos_obligatorios():
             return
 
-        # Luego validamos que las contraseñas coincidan
         contraseña = self.txt_contraseña.text()
         confirmacion = self.txt_confirmar_contraseña.text()
 
@@ -771,20 +482,15 @@ class RegistroScreen(QMainWindow):
             )
             return
 
-        # Si todo está correcto, generamos el perfil y guardamos los datos
         try:
-            # Crear objeto de usuario
             usuario = self.crear_objeto_usuario()
 
-            # Guardar datos en la base de datos
             if self.db_service.guardar_usuario(usuario):
                 QMessageBox.information(
                     self,
                     "Registro exitoso",
                     f"¡Bienvenido/a a GymSync, {usuario.nombre}!\n\nTu cuenta ha sido creada correctamente."
                 )
-
-                # Redirigir a la pantalla principal
                 self.redirigir_a_pantalla_principal(usuario)
             else:
                 self.mostrar_error_validacion(
@@ -800,7 +506,6 @@ class RegistroScreen(QMainWindow):
 
     def validar_campos_obligatorios(self):
         """Verifica que todos los campos requeridos estén completados."""
-        # Validamos los campos de texto
         campos_texto = {
             "Nombre y apellidos": self.txt_nombre.text(),
             "Correo": self.txt_correo.text(),
@@ -812,7 +517,6 @@ class RegistroScreen(QMainWindow):
             "Altura": self.txt_altura.text()
         }
 
-        # Verificar que no haya campos de texto vacíos
         for campo, valor in campos_texto.items():
             if not valor:
                 self.mostrar_error_validacion(
@@ -821,7 +525,6 @@ class RegistroScreen(QMainWindow):
                 )
                 return False
 
-        # Validamos los desplegables (que no estén en la opción default)
         if self.cmb_genero.currentIndex() == 0:
             self.mostrar_error_validacion(
                 "Campos incompletos",
@@ -857,7 +560,6 @@ class RegistroScreen(QMainWindow):
             )
             return False
 
-        # Validamos formato de correo (básico)
         if "@" not in campos_texto["Correo"] or "." not in campos_texto["Correo"]:
             self.mostrar_error_validacion(
                 "Formato incorrecto",
@@ -865,7 +567,6 @@ class RegistroScreen(QMainWindow):
             )
             return False
 
-        # Validamos que edad, peso y altura sean numéricos
         try:
             edad = int(campos_texto["Edad"])
             if edad <= 0 or edad > 120:
@@ -908,9 +609,6 @@ class RegistroScreen(QMainWindow):
 
     def redirigir_a_pantalla_principal(self, usuario):
         """Cambia a la pantalla principal tras un registro exitoso."""
-        # En una aplicación real, aquí cerraríamos esta ventana y se abriría la principal
-        # pasando la información del usuario recién registrado
-
         QMessageBox.information(
             self,
             "Navegación",
@@ -918,7 +616,6 @@ class RegistroScreen(QMainWindow):
             f"¡Bienvenido/a a GymSync, {usuario.nombre}!"
         )
 
-        # Código para cambiar de pantalla (comentado porque depende de la estructura de la app)
         self.main_window = MainScreen(usuario)
         self.main_window.show()
         self.close()
@@ -933,7 +630,6 @@ class RegistroScreen(QMainWindow):
             self.login_screen.show()
             self.close()
         else:
-            # Si no hay referencia a login_screen, crear una nueva instancia
             self.login_window = LoginScreen()
             self.login_window.show()
             self.close()
@@ -943,83 +639,58 @@ class MainScreen(QMainWindow):
     def __init__(self, usuario):
         super(MainScreen, self).__init__()
 
-        # Guardar referencia al usuario logueado
         self.usuario = usuario
 
-        # Cargar el archivo UI de la pantalla principal
         uic.loadUi("main_screen.ui", self)
 
-        # Inicializar el servicio de base de datos
         self.db_service = BaseDatosGymSync()
 
-        # Configurar la pantalla con los datos del usuario
         self.configurar_pantalla_usuario()
 
-        # Conectar señales a slots
         self.setupConnections()
 
     def setupConnections(self):
         """Configura las conexiones entre los widgets y los métodos."""
-        # Conectar botones de la interfaz
         self.btn_datos_perfil.clicked.connect(self.abrir_datos_perfil)
-        self.btn_expandir_progreso.clicked.connect(self.expandir_progreso)
 
     def configurar_pantalla_usuario(self):
         """Configura todos los elementos de la pantalla con los datos del usuario."""
-        # Configurar información del perfil
         self.configurar_seccion_perfil()
 
-        # Configurar sección de progreso
         self.configurar_seccion_progreso()
 
-        # Configurar sesión de entrenamiento actual
         self.configurar_sesion_actual()
 
-        # Configurar próximas sesiones
         self.configurar_proximas_sesiones()
 
-        # Configurar notificaciones
         self.configurar_notificaciones()
 
     def configurar_seccion_perfil(self):
         """Configura la sección del perfil del usuario."""
-        # Establecer el correo del usuario
         self.lbl_correo_usuario.setText(self.usuario.correo)
 
-        # Configurar avatar (por ahora texto, después se puede cambiar por imagen)
         iniciales = self.obtener_iniciales(self.usuario.nombre)
         self.lbl_avatar_usuario.setText(iniciales)
 
     def configurar_seccion_progreso(self):
         """Configura la sección de progreso del usuario."""
-        # Calcular días de uso
         dias_uso = self.db_service.calcular_dias_uso(self.usuario.correo)
         self.lbl_dias_uso.setText(str(dias_uso))
-
-        # Calcular días para siguiente nivel (ejemplo: cada 30 días es un nivel)
         dias_siguiente_nivel = 30 - (dias_uso % 30)
         if dias_siguiente_nivel == 30:
             dias_siguiente_nivel = 0
         self.lbl_dias_siguiente_nivel.setText(str(dias_siguiente_nivel))
-
-        # Mostrar diferencia de peso (simulado por ahora)
         diferencia_peso = self.calcular_diferencia_peso()
         self.lbl_diferencia_peso.setText(diferencia_peso)
 
     def configurar_sesion_actual(self):
         """Configura la sesión de entrenamiento actual."""
-        # Obtener día actual
         dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         dia_actual = QDateTime.currentDateTime().date().dayOfWeek()
         nombre_dia = dias_semana[dia_actual - 1]
-
         self.lbl_dia_actual.setText(nombre_dia)
-
-        # Configurar tipo de sesión según el día y objetivo del usuario
         tipo_sesion = self.obtener_tipo_sesion(dia_actual)
         self.lbl_tipo_sesion_actual.setText(tipo_sesion)
-
-        # Configurar ejercicios de la sesión actual
         self.configurar_ejercicios_actuales(tipo_sesion)
 
     def configurar_proximas_sesiones(self):
@@ -1055,8 +726,7 @@ class MainScreen(QMainWindow):
     def obtener_iniciales(self, nombre):
         """Obtiene las iniciales del nombre del usuario."""
         if not nombre:
-            return "US"
-
+            return "YO"
         palabras = nombre.split()
         if len(palabras) >= 2:
             return f"{palabras[0][0]}{palabras[1][0]}".upper()
@@ -1064,15 +734,8 @@ class MainScreen(QMainWindow):
             return palabras[0][:2].upper()
 
     def calcular_diferencia_peso(self):
-        """Calcula la diferencia de peso (simulado por ahora)."""
-        # En una implementación real, esto vendría de un historial de pesos
-        # Por ahora, simularemos basándose en el objetivo
-        if self.usuario.objetivo == "Adelgazar":
-            return "-2.3 kg"
-        elif self.usuario.objetivo == "Ganar masa muscular":
-            return "+1.8 kg"
-        else:
-            return "0.0 kg"
+        """Calcula la diferencia de peso."""
+        return "0.0 kg"
 
     def obtener_tipo_sesion(self, dia):
         """Obtiene el tipo de sesión según el día y objetivo del usuario."""
@@ -1336,20 +999,20 @@ class MainScreen(QMainWindow):
             elif self.usuario.disponibilidad == "Solo fines de semana":
                 tipos_competicion_finde = {
                     1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "FULL BODY POWER",
-                    7: "COMPETITION PREP"
+                    7: "COMPETITION PREPARATION"
                 }
                 return tipos_competicion_finde.get(dia, "ENTRENAMIENTO")
 
             elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
                 tipos_competicion_3dias = {
-                    1: "FULL BODY POWER", 2: "DESCANSO", 3: "COMPETITION PREP", 4: "DESCANSO", 5: "FULL BODY STRENGTH",
+                    1: "FULL BODY POWER", 2: "DESCANSO", 3: "COMPETITION PREPARATION", 4: "DESCANSO", 5: "FULL BODY STRENGTH",
                     6: "DESCANSO", 7: "DESCANSO"
                 }
                 return tipos_competicion_3dias.get(dia, "ENTRENAMIENTO")
 
             elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
                 tipos_competicion_2dias = {
-                    1: "DESCANSO", 2: "FULL BODY POWER", 3: "DESCANSO", 4: "COMPETITION PREP", 5: "DESCANSO",
+                    1: "DESCANSO", 2: "FULL BODY POWER", 3: "DESCANSO", 4: "COMPETITION PREPARATION", 5: "DESCANSO",
                     6: "DESCANSO", 7: "DESCANSO"
                 }
                 return tipos_competicion_2dias.get(dia, "ENTRENAMIENTO")
@@ -1357,7 +1020,7 @@ class MainScreen(QMainWindow):
             else:  # Todos los días
                 tipos_competicion_diario = {
                     1: "PUSH DAY", 2: "PULL DAY", 3: "LEGS DAY", 4: "PUSH DAY", 5: "PULL DAY", 6: "LEGS DAY",
-                    7: "COMPETITION PREP"
+                    7: "COMPETITION PREPARATION"
                 }
                 return tipos_competicion_diario.get(dia, "ENTRENAMIENTO")
 
@@ -1368,19 +1031,13 @@ class MainScreen(QMainWindow):
         """Configura la lista de ejercicios para la sesión actual."""
         ejercicios = self.obtener_ejercicios_por_tipo_completo(tipo_sesion)
 
-        # Limpiar la lista actual
         self.lista_ejercicios_actuales.clear()
-
-        # Agregar ejercicios a la lista
         for ejercicio in ejercicios:
             item = QListWidgetItem(ejercicio)
             self.lista_ejercicios_actuales.addItem(item)
 
     def obtener_ejercicios_por_tipo_completo(self, tipo_sesion):
         """Retorna una lista de ejercicios según el tipo de sesión y lugar de entrenamiento."""
-
-        # Determinar ejercicios según lugar de entrenamiento
-        ejercicios_por_tipo = {}
 
         if self.usuario.lugar_entrenamiento == "Casa sin equipamiento":
             ejercicios_por_tipo = {
@@ -1501,7 +1158,7 @@ class MainScreen(QMainWindow):
                     "Mountain climbers - 3x30s",
                     "Plank to downward dog - 3x10"
                 ],
-                "COMPETITION PREP": [
+                "COMPETITION PREPARATION": [
                     "Rutina específica competición - 45 min",
                     "Técnica y precisión - 20 min",
                     "Resistencia específica - 15 min",
@@ -1681,7 +1338,7 @@ class MainScreen(QMainWindow):
                     "Burpees con peso - 3x6-8",
                     "Clean and press - 3x6-8"
                 ],
-                "COMPETITION PREP": [
+                "COMPETITION PREPARATION": [
                     "Rutina específica con peso - 45 min",
                     "Técnica avanzada - 20 min",
                     "Potencia y velocidad - 15 min",
@@ -1847,7 +1504,7 @@ class MainScreen(QMainWindow):
                     "Pull-ups explosivos - 3x5-8",
                     "Thrusters pesados - 3x6-8"
                 ],
-                "COMPETITION PREP": [
+                "COMPETITION PREPARATION": [
                     "Rutina específica competición - 60 min",
                     "Técnica perfecta con peso - 25 min",
                     "Potencia explosiva - 20 min",
@@ -1964,25 +1621,22 @@ class MainScreen(QMainWindow):
         """Genera notificaciones personalizadas según el usuario."""
         notificaciones = []
 
-        # Notificación basada en el objetivo
         if self.usuario.objetivo == "Adelgazar":
-            notificaciones.append("RECORDATORIO: Mantén tu déficit calórico")
+            notificaciones.append("RECORDATORIO: ¡Profes!¡Recordar ponernos buena nota! ;)")
         elif self.usuario.objetivo == "Ganar masa muscular":
             notificaciones.append("TIP: Consume suficiente proteína hoy")
         else:
             notificaciones.append("MOTIVACIÓN: ¡Sigue así, lo estás haciendo genial!")
 
-        # Notificación basada en el IMC
         if hasattr(self.usuario, 'categoria_imc'):
             if self.usuario.categoria_imc == "Sobrepeso":
                 notificaciones.append("SALUD: Considera aumentar tu actividad cardiovascular")
             elif self.usuario.categoria_imc == "Bajo peso":
                 notificaciones.append("NUTRICIÓN: Asegúrate de comer suficientes calorías")
 
-        # Notificación general
         notificaciones.append("HIDRATACIÓN: Recuerda beber agua regularmente")
 
-        return notificaciones[:3]  # Máximo 3 notificaciones
+        return notificaciones[:3]
 
     @pyqtSlot()
     def abrir_datos_perfil(self):
@@ -1990,38 +1644,24 @@ class MainScreen(QMainWindow):
         self.editar_perfil_window = EditarPerfilScreen(self.usuario, self)
         self.editar_perfil_window.show()
 
-    @pyqtSlot()
-    def expandir_progreso(self):
-        """Muestra el progreso detallado del usuario."""
-        dias_uso = self.db_service.calcular_dias_uso(self.usuario.correo)
-        nivel_actual = (dias_uso // 30) + 1
-
-
 class EditarPerfilScreen(QMainWindow):
     def __init__(self, usuario, main_screen=None):
         super(EditarPerfilScreen, self).__init__()
 
-        # Guardar referencia al usuario y a la pantalla principal
         self.usuario = usuario
         self.main_screen = main_screen
-
-        # Cargar el archivo UI (puedes usar el mismo de registro o crear uno específico)
         uic.loadUi("editar_perfil_screen.ui", self)
 
-        # Inicializar el servicio de base de datos
         self.db_service = BaseDatosGymSync()
 
-        # Cargar las opciones de los desplegables
         self.cargar_opciones_objetivo()
         self.cargar_disponibilidad_horaria()
         self.cargar_estilos_vida()
         self.cargar_lugar_entrenamiento()
         self.cargar_genero()
 
-        # Cargar los datos actuales del usuario en los campos
         self.cargar_datos_actuales()
 
-        # Conectar señales a slots
         self.setupConnections()
 
     def setupConnections(self):
@@ -2090,7 +1730,6 @@ class EditarPerfilScreen(QMainWindow):
 
     def cargar_datos_actuales(self):
         """Carga los datos actuales del usuario en los campos del formulario."""
-        # Cargar datos de texto
         self.txt_nombre.setText(self.usuario.nombre)
         self.txt_correo.setText(self.usuario.correo)
         self.txt_telefono.setText(self.usuario.telefono)
@@ -2098,14 +1737,12 @@ class EditarPerfilScreen(QMainWindow):
         self.txt_peso.setText(str(self.usuario.peso))
         self.txt_altura.setText(str(self.usuario.altura))
 
-        # Cargar selecciones de los combobox
         self.establecer_seleccion_combobox(self.cmb_genero, self.usuario.genero)
         self.establecer_seleccion_combobox(self.cmb_objetivo, self.usuario.objetivo)
         self.establecer_seleccion_combobox(self.cmb_disponibilidad, self.usuario.disponibilidad)
         self.establecer_seleccion_combobox(self.cmb_estilo_vida, self.usuario.estilo_vida)
         self.establecer_seleccion_combobox(self.cmb_lugar_entrenamiento, self.usuario.lugar_entrenamiento)
 
-        # Deshabilitar el campo de correo (no se puede cambiar)
         self.txt_correo.setEnabled(False)
         self.txt_correo.setStyleSheet("background-color: #f0f0f0; color: #666666;")
 
@@ -2119,11 +1756,9 @@ class EditarPerfilScreen(QMainWindow):
     @pyqtSlot()
     def guardar_cambios(self):
         """Guarda los cambios realizados en el perfil del usuario."""
-        # Validar campos obligatorios
         if not self.validar_campos_obligatorios():
             return
 
-        # Verificar si se cambió la contraseña
         nueva_contraseña = None
         if hasattr(self, 'txt_nueva_contraseña') and self.txt_nueva_contraseña.text():
             if hasattr(self, 'txt_confirmar_nueva_contraseña'):
@@ -2136,12 +1771,9 @@ class EditarPerfilScreen(QMainWindow):
                 nueva_contraseña = self.txt_nueva_contraseña.text()
 
         try:
-            # Crear objeto usuario actualizado
             usuario_actualizado = self.crear_objeto_usuario_actualizado(nueva_contraseña)
 
-            # Guardar cambios en la base de datos
             if self.db_service.actualizar_usuario(usuario_actualizado):
-                # Actualizar el objeto usuario en memoria
                 self.actualizar_usuario_en_memoria(usuario_actualizado)
 
                 QMessageBox.information(
@@ -2150,12 +1782,10 @@ class EditarPerfilScreen(QMainWindow):
                     "Los cambios en tu perfil se han guardado correctamente."
                 )
 
-                # Actualizar la pantalla principal si existe referencia
                 if self.main_screen:
                     self.main_screen.usuario = usuario_actualizado
                     self.main_screen.configurar_pantalla_usuario()
 
-                # Cerrar ventana de edición
                 self.close()
 
             else:
@@ -2172,7 +1802,6 @@ class EditarPerfilScreen(QMainWindow):
 
     def validar_campos_obligatorios(self):
         """Verifica que todos los campos requeridos estén completados."""
-        # Validamos los campos de texto
         campos_texto = {
             "Nombre y apellidos": self.txt_nombre.text(),
             "Número de teléfono": self.txt_telefono.text(),
@@ -2181,7 +1810,6 @@ class EditarPerfilScreen(QMainWindow):
             "Altura": self.txt_altura.text()
         }
 
-        # Verificar que no haya campos de texto vacíos
         for campo, valor in campos_texto.items():
             if not valor:
                 self.mostrar_error_validacion(
@@ -2190,7 +1818,6 @@ class EditarPerfilScreen(QMainWindow):
                 )
                 return False
 
-        # Validamos que edad, peso y altura sean numéricos
         try:
             edad = int(campos_texto["Edad"])
             if edad <= 0 or edad > 120:
@@ -2261,8 +1888,6 @@ class EditarPerfilScreen(QMainWindow):
         if respuesta == QMessageBox.Yes:
             self.close()
 
-
-# Clase principal para manejar la navegación entre pantallas
 class GymSyncApp:
     def __init__(self):
         self.app = QApplication(sys.argv)
@@ -2275,8 +1900,6 @@ class GymSyncApp:
     def ejecutar(self):
         return self.app.exec_()
 
-
-# Este es el código necesario para ejecutar la aplicación
 def main():
     app = GymSyncApp()
     sys.exit(app.ejecutar())
