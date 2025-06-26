@@ -3,13 +3,14 @@ import sqlite3
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QComboBox, QCheckBox, QListWidgetItem
 from PyQt5.QtCore import pyqtSlot, QDateTime
 from PyQt5 import uic
+from datetime import datetime
 
 
 # Estas clases representan el modelo y servicios
 class Usuario:
     def __init__(self, correo, contraseña, nombre=None, telefono=None, edad=None,
                  genero=None, peso=None, altura=None, objetivo=None,
-                 disponibilidad=None, estilo_vida=None, lugar_entrenamiento=None):
+                 disponibilidad=None, estilo_vida=None, lugar_entrenamiento=None, fecha_registro=None):
         self.correo = correo
         self.contraseña = contraseña
         self.nombre = nombre
@@ -22,6 +23,7 @@ class Usuario:
         self.disponibilidad = disponibilidad
         self.estilo_vida = estilo_vida
         self.lugar_entrenamiento = lugar_entrenamiento
+        self.fecha_registro = fecha_registro
 
         # Calcular IMC si altura y peso están disponibles
         if peso and altura:
@@ -49,6 +51,9 @@ class Usuario:
                 self.recomendacion = 'Programa personalizado según objetivo específico'
 
 
+import sqlite3
+from datetime import datetime
+
 class BaseDatosGymSync:
     def __init__(self, db_nombre='gymsync.db'):
         self.db_nombre = db_nombre
@@ -60,7 +65,7 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Crear tabla de usuarios con todas las columnas desde el inicio
+            # Crear tabla de usuarios si no existe
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,34 +85,30 @@ class BaseDatosGymSync:
             )
             ''')
 
-            # Verificar si existen las columnas y agregarlas solo si no existen
+            # Verificar qué columnas existen
             cursor.execute("PRAGMA table_info(usuarios)")
-            columnas_existentes = [columna[1] for columna in cursor.fetchall()]
+            columnas = [columna[1] for columna in cursor.fetchall()]
 
-            # Agregar columnas faltantes solo si no existen
-            if 'lugar_entrenamiento' not in columnas_existentes:
+            # Agregar columna lugar_entrenamiento si no existe
+            if 'lugar_entrenamiento' not in columnas:
                 cursor.execute('ALTER TABLE usuarios ADD COLUMN lugar_entrenamiento TEXT')
 
-            if 'fecha_registro' not in columnas_existentes:
-                cursor.execute('ALTER TABLE usuarios ADD COLUMN fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP')
+            # Agregar columna fecha_registro si no existe
+            if 'fecha_registro' not in columnas:
+                cursor.execute('ALTER TABLE usuarios ADD COLUMN fecha_registro DATETIME')
 
-            # Insertar algunos usuarios de prueba si la tabla está vacía
-            cursor.execute("SELECT COUNT(*) FROM usuarios")
-            if cursor.fetchone()[0] == 0:
-                # Usar DATETIME('now') para SQLite
+                # Actualizar registros existentes con fecha actual
                 cursor.execute('''
-                INSERT INTO usuarios (nombre, correo, contraseña, peso, altura, objetivo, fecha_registro)
-                VALUES 
-                    ("Usuario de Prueba", "usuario@ejemplo.com", "contraseña123", 70.0, 175.0, "Mantener peso", DATETIME('now')),
-                    ("Usuario de Test", "test@gymsync.com", "test123", 65.0, 160.0, "Adelgazar", DATETIME('now'))
+                    UPDATE usuarios 
+                    SET fecha_registro = DATETIME('now') 
+                    WHERE fecha_registro IS NULL
                 ''')
 
             conn.commit()
             conn.close()
-            print("Base de datos inicializada correctamente")
 
         except Exception as e:
-            print(f"Error al inicializar la base de datos: {str(e)}")
+            print(f"Error al inicializar la base de datos: {e}")
 
     def validar_credenciales(self, correo, contraseña):
         """Verifica si las credenciales ingresadas corresponden a un usuario registrado."""
@@ -125,8 +126,7 @@ class BaseDatosGymSync:
 
             return usuario is not None
 
-        except Exception as e:
-            print(f"Error al validar credenciales: {str(e)}")
+        except Exception:
             return False
 
     def guardar_usuario(self, usuario):
@@ -135,12 +135,24 @@ class BaseDatosGymSync:
             conn = sqlite3.connect(self.db_nombre)
             cursor = conn.cursor()
 
-            # Insertar datos del usuario con fecha actual
+            # Verificar si el usuario ya existe
+            cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (usuario.correo,))
+            if cursor.fetchone():
+                conn.close()
+                print(f"El usuario con correo {usuario.correo} ya existe")
+                return False
+
+            # Usar fecha actual si no se proporciona
+            if hasattr(usuario, 'fecha_registro') and usuario.fecha_registro:
+                fecha_registro = usuario.fecha_registro
+            else:
+                fecha_registro = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Insertar datos del usuario
             cursor.execute('''
             INSERT INTO usuarios (nombre, correo, contraseña, telefono, edad, genero, 
-                                peso, altura, objetivo, disponibilidad, estilo_vida, 
-                                lugar_entrenamiento, fecha_registro)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATETIME('now'))
+                                peso, altura, objetivo, disponibilidad, estilo_vida, lugar_entrenamiento, fecha_registro)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 usuario.nombre,
                 usuario.correo,
@@ -153,7 +165,8 @@ class BaseDatosGymSync:
                 usuario.objetivo,
                 usuario.disponibilidad,
                 usuario.estilo_vida,
-                usuario.lugar_entrenamiento
+                usuario.lugar_entrenamiento,
+                fecha_registro
             ))
 
             # Guardar cambios y cerrar conexión
@@ -163,11 +176,70 @@ class BaseDatosGymSync:
             return True
 
         except sqlite3.IntegrityError:
-            # Error de duplicación de correo (UNIQUE constraint)
             return False
 
         except Exception as e:
-            print(f"Error al guardar usuario: {str(e)}")
+            print(f"Error al guardar usuario: {e}")
+            return False
+
+    def actualizar_usuario(self, usuario):
+        """Actualiza los datos de un usuario existente en la base de datos."""
+        try:
+            conn = sqlite3.connect(self.db_nombre)
+            cursor = conn.cursor()
+
+            # Verificar que el usuario existe
+            cursor.execute("SELECT id FROM usuarios WHERE correo = ?", (usuario.correo,))
+            if not cursor.fetchone():
+                conn.close()
+                print(f"El usuario con correo {usuario.correo} no existe")
+                return False
+
+            # Actualizar datos del usuario
+            cursor.execute('''
+            UPDATE usuarios SET 
+                nombre = ?,
+                contraseña = ?,
+                telefono = ?,
+                edad = ?,
+                genero = ?,
+                peso = ?,
+                altura = ?,
+                objetivo = ?,
+                disponibilidad = ?,
+                estilo_vida = ?,
+                lugar_entrenamiento = ?
+            WHERE correo = ?
+            ''', (
+                usuario.nombre,
+                usuario.contraseña,
+                usuario.telefono,
+                usuario.edad,
+                usuario.genero,
+                usuario.peso,
+                usuario.altura,
+                usuario.objetivo,
+                usuario.disponibilidad,
+                usuario.estilo_vida,
+                usuario.lugar_entrenamiento,
+                usuario.correo  # WHERE correo = ?
+            ))
+
+            # Verificar que se actualizó al menos un registro
+            if cursor.rowcount == 0:
+                conn.close()
+                print(f"No se pudo actualizar el usuario con correo {usuario.correo}")
+                return False
+
+            # Guardar cambios y cerrar conexión
+            conn.commit()
+            conn.close()
+
+            print(f"Usuario {usuario.correo} actualizado correctamente")
+            return True
+
+        except Exception as e:
+            print(f"Error al actualizar usuario: {e}")
             return False
 
     def obtener_usuario_por_correo(self, correo):
@@ -185,27 +257,29 @@ class BaseDatosGymSync:
             conn.close()
 
             if datos:
-                # Crear usuario con los datos recuperados
+                # Crear usuario con todos los datos disponibles
+                # Asumiendo que tienes una clase Usuario importada
                 usuario = Usuario(
                     correo=datos[2],
                     contraseña=datos[3],
                     nombre=datos[1],
-                    telefono=datos[4],
-                    edad=datos[5],
-                    genero=datos[6],
-                    peso=datos[7],
-                    altura=datos[8],
-                    objetivo=datos[9],
-                    disponibilidad=datos[10],
-                    estilo_vida=datos[11],
-                    lugar_entrenamiento=datos[12] if len(datos) > 12 else None
+                    telefono=datos[4] if len(datos) > 4 else None,
+                    edad=datos[5] if len(datos) > 5 else None,
+                    genero=datos[6] if len(datos) > 6 else None,
+                    peso=datos[7] if len(datos) > 7 else None,
+                    altura=datos[8] if len(datos) > 8 else None,
+                    objetivo=datos[9] if len(datos) > 9 else None,
+                    disponibilidad=datos[10] if len(datos) > 10 else None,
+                    estilo_vida=datos[11] if len(datos) > 11 else None,
+                    lugar_entrenamiento=datos[12] if len(datos) > 12 else None,
+                    fecha_registro=datos[13] if len(datos) > 13 else None
                 )
                 return usuario
 
             return None
 
         except Exception as e:
-            print(f"Error al recuperar usuario: {str(e)}")
+            print(f"Error al obtener usuario: {e}")
             return None
 
     def calcular_dias_uso(self, correo):
@@ -231,21 +305,272 @@ class BaseDatosGymSync:
             conn.close()
 
             if resultado and resultado[0]:
-                from datetime import datetime
                 try:
-                    fecha_registro = datetime.strptime(resultado[0], '%Y-%m-%d %H:%M:%S')
-                    dias_uso = (datetime.now() - fecha_registro).days
-                    return max(1, dias_uso)  # Mínimo 1 día
-                except ValueError:
-                    # Si hay error en el formato de fecha, devolver 1 día
+                    # Intentar diferentes formatos de fecha
+                    fecha_str = resultado[0]
+
+                    # Formatos posibles
+                    formatos = [
+                        '%Y-%m-%d %H:%M:%S',
+                        '%Y-%m-%d %H:%M:%S.%f',  # Con microsegundos
+                        '%Y-%m-%d',
+                        '%d/%m/%Y %H:%M:%S',
+                        '%d/%m/%Y'
+                    ]
+
+                    fecha_registro = None
+                    for formato in formatos:
+                        try:
+                            fecha_registro = datetime.strptime(fecha_str, formato)
+                            break
+                        except ValueError:
+                            continue
+
+                    if fecha_registro:
+                        fecha_actual = datetime.now()
+                        diferencia = fecha_actual - fecha_registro
+                        dias_uso = diferencia.days
+
+                        # Si es el mismo día, mostrar 1, sino mostrar los días reales + 1
+                        if dias_uso == 0:
+                            return 1
+                        else:
+                            return dias_uso + 1
+                    else:
+                        return 1
+
+                except Exception:
                     return 1
 
             return 1  # Si no hay fecha, devolver 1 día
 
-        except Exception as e:
-            print(f"Error al calcular días de uso: {str(e)}")
+        except Exception:
             return 1
 
+    def debug_usuario_fechas(self, correo):
+        """Método para debug - mostrar información de fechas del usuario."""
+        try:
+            conn = sqlite3.connect(self.db_nombre)
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT nombre, correo, fecha_registro FROM usuarios WHERE correo = ?",
+                (correo,)
+            )
+
+            resultado = cursor.fetchone()
+            conn.close()
+
+            if resultado:
+                print(f"\n=== DEBUG USUARIO ===")
+                print(f"Nombre: {resultado[0]}")
+                print(f"Correo: {resultado[1]}")
+                print(f"Fecha registro (raw): {resultado[2]}")
+                print(f"Tipo de dato: {type(resultado[2])}")
+
+                if resultado[2]:
+                    try:
+                        fecha_registro = datetime.strptime(resultado[2], '%Y-%m-%d %H:%M:%S')
+                        fecha_actual = datetime.now()
+                        diferencia = fecha_actual - fecha_registro
+
+                        print(f"Fecha registro (parsed): {fecha_registro}")
+                        print(f"Fecha actual: {fecha_actual}")
+                        print(f"Diferencia total: {diferencia}")
+                        print(f"Días: {diferencia.days}")
+                        print(f"Segundos: {diferencia.seconds}")
+                        print(f"Total segundos: {diferencia.total_seconds()}")
+                        print("=====================\n")
+
+                    except ValueError as e:
+                        print(f"Error al parsear fecha: {e}")
+            else:
+                print(f"Usuario {correo} no encontrado")
+
+        except Exception as e:
+            print(f"Error en debug: {str(e)}")
+
+    def actualizar_fecha_usuario(self, correo, nueva_fecha=None):
+        """Actualizar manualmente la fecha de registro de un usuario."""
+        try:
+            conn = sqlite3.connect(self.db_nombre)
+            cursor = conn.cursor()
+
+            if nueva_fecha is None:
+                nueva_fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            cursor.execute(
+                "UPDATE usuarios SET fecha_registro = ? WHERE correo = ?",
+                (nueva_fecha, correo)
+            )
+
+            if cursor.rowcount > 0:
+                conn.commit()
+                conn.close()
+                print(f"Fecha actualizada para {correo}: {nueva_fecha}")
+                return True
+            else:
+                conn.close()
+                print(f"Usuario {correo} no encontrado")
+                return False
+
+        except Exception:
+            return False
+        """Método auxiliar para recrear la tabla con la estructura correcta."""
+        try:
+            conn = sqlite3.connect(self.db_nombre)
+            cursor = conn.cursor()
+
+            # Respaldar datos existentes
+            cursor.execute("SELECT * FROM usuarios")
+            datos_existentes = cursor.fetchall()
+
+            # Eliminar tabla actual
+            cursor.execute("DROP TABLE IF EXISTS usuarios")
+
+            # Crear nueva tabla con estructura correcta
+            cursor.execute('''
+            CREATE TABLE usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                correo TEXT UNIQUE NOT NULL,
+                contraseña TEXT NOT NULL,
+                telefono TEXT,
+                edad INTEGER,
+                genero TEXT,
+                peso REAL,
+                altura REAL,
+                objetivo TEXT,
+                disponibilidad TEXT,
+                estilo_vida TEXT,
+                lugar_entrenamiento TEXT,
+                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+
+            # Restaurar datos existentes con fecha actual para los que no la tengan
+            fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            for dato in datos_existentes:
+                # Ajustar según la cantidad de columnas que tengas
+                if len(dato) < 14:  # Si no tiene fecha_registro
+                    dato = list(dato) + [fecha_actual]
+
+                cursor.execute('''
+                INSERT INTO usuarios (id, nombre, correo, contraseña, telefono, edad, genero, 
+                                    peso, altura, objetivo, disponibilidad, estilo_vida, 
+                                    lugar_entrenamiento, fecha_registro)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', dato)
+
+            conn.commit()
+            conn.close()
+            print("Tabla recreada exitosamente")
+
+        except Exception:
+            pass
+
+
+# Función auxiliar para migrar base de datos existente
+def migrar_base_datos():
+    """Función para migrar una base de datos existente que presenta el error."""
+    db = BaseDatosGymSync()
+    db.recrear_tabla_usuarios()
+
+
+# Función auxiliar para testing y debug
+def test_fechas():
+    """Función para probar el cálculo de días."""
+    db = BaseDatosGymSync()
+
+    # Probar con usuario existente
+    correo_test = "usuario@ejemplo.com"
+
+    print("=== TESTING FECHAS ===")
+    db.debug_usuario_fechas(correo_test)
+
+    dias = db.calcular_dias_uso(correo_test)
+    print(f"Días de uso calculados: {dias}")
+
+
+# Agregar este método a la clase BaseDatosGymSync
+
+def actualizar_usuario(self, usuario):
+    """
+    Actualiza los datos de un usuario existente en la base de datos.
+
+    Args:
+        usuario: Objeto Usuario con los datos actualizados
+
+    Returns:
+        bool: True si la actualización fue exitosa, False en caso contrario
+    """
+    try:
+        # Conectar a la base de datos
+        conexion = sqlite3.connect(self.db_path)
+        cursor = conexion.cursor()
+
+        # Preparar la consulta de actualización
+        consulta_update = """
+        UPDATE usuarios SET 
+            nombre = ?,
+            telefono = ?,
+            edad = ?,
+            genero = ?,
+            peso = ?,
+            altura = ?,
+            objetivo = ?,
+            disponibilidad = ?,
+            estilo_vida = ?,
+            lugar_entrenamiento = ?,
+            contraseña = ?,
+            fecha_actualizacion = ?
+        WHERE correo = ?
+        """
+
+        # Obtener la fecha actual
+        from datetime import datetime
+        fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Ejecutar la consulta
+        cursor.execute(consulta_update, (
+            usuario.nombre,
+            usuario.telefono,
+            usuario.edad,
+            usuario.genero,
+            usuario.peso,
+            usuario.altura,
+            usuario.objetivo,
+            usuario.disponibilidad,
+            usuario.estilo_vida,
+            usuario.lugar_entrenamiento,
+            usuario.contraseña,
+            fecha_actual,
+            usuario.correo  # WHERE condition
+        ))
+
+        # Confirmar los cambios
+        conexion.commit()
+
+        # Verificar que se actualizó al menos una fila
+        if cursor.rowcount > 0:
+            print(f"Usuario {usuario.correo} actualizado correctamente")
+            return True
+        else:
+            print(f"No se encontró el usuario {usuario.correo} para actualizar")
+            return False
+
+    except sqlite3.Error as e:
+        print(f"Error al actualizar usuario: {e}")
+        return False
+
+    except Exception as e:
+        print(f"Error inesperado al actualizar usuario: {e}")
+        return False
+
+    finally:
+        # Cerrar la conexión
+        if conexion:
+            conexion.close()
 
 class LoginScreen(QMainWindow):
     def __init__(self):
@@ -667,7 +992,7 @@ class MainScreen(QMainWindow):
 
     def configurar_seccion_progreso(self):
         """Configura la sección de progreso del usuario."""
-        #Calcular días de uso
+        # Calcular días de uso
         dias_uso = self.db_service.calcular_dias_uso(self.usuario.correo)
         self.lbl_dias_uso.setText(str(dias_uso))
 
@@ -709,7 +1034,7 @@ class MainScreen(QMainWindow):
         tipo_sesion1 = self.obtener_tipo_sesion(dia_proximo1)
         self.lbl_tipo_sesion_proximo1.setText(tipo_sesion1)
 
-        #Configurar próxima sesión 2 (pasado mañana)
+        # Configurar próxima sesión 2 (pasado mañana)
         dia_proximo2 = ((dia_actual + 1) % 7) + 1
         nombre_dia2 = dias_semana[dia_proximo2 - 1]
         self.lbl_dia_proximo2.setText(nombre_dia2)
@@ -751,34 +1076,297 @@ class MainScreen(QMainWindow):
 
     def obtener_tipo_sesion(self, dia):
         """Obtiene el tipo de sesión según el día y objetivo del usuario."""
-        tipos_push_pull_legs = {
-            1: "PULL DAY",  # Lunes
-            2: "PUSH DAY",  # Martes
-            3: "LEGS DAY",  # Miércoles
-            4: "PULL DAY",  # Jueves
-            5: "PUSH DAY",  # Viernes
-            6: "CARDIO",  # Sábado
-            7: "DESCANSO"  # Domingo
-        }
 
-        tipos_cardio = {
-            1: "CARDIO HIIT",
-            2: "FUERZA",
-            3: "CARDIO BAJO",
-            4: "FUERZA",
-            5: "CARDIO HIIT",
-            6: "YOGA",
-            7: "DESCANSO"
-        }
+        # ADELGAZAR
+        if self.usuario.objetivo == "Adelgazar":
+            if self.usuario.disponibilidad == "Lunes a Viernes (mañanas)" or self.usuario.disponibilidad == "Lunes a Viernes (tardes)":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_adelgazar_sedentario_5dias = {
+                        1: "EASY CARDIO", 2: "LIGHT STRENGTH", 3: "EASY CARDIO", 4: "LIGHT STRENGTH", 5: "EASY CARDIO",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_sedentario_5dias.get(dia, "ENTRENAMIENTO")
+                elif self.usuario.estilo_vida in ["Ligeramente activo", "Moderadamente activo"]:
+                    tipos_adelgazar_moderado_5dias = {
+                        1: "CARDIO HIIT", 2: "FULL BODY STRENGTH", 3: "CARDIO BAJO", 4: "FULL BODY STRENGTH",
+                        5: "CARDIO HIIT", 6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_moderado_5dias.get(dia, "ENTRENAMIENTO")
+                else:  # Muy activo, Extremadamente activo
+                    tipos_adelgazar_intenso_5dias = {
+                        1: "HARD CARDIO", 2: "STRENGTH CIRCUIT", 3: "CARDIO HIIT", 4: "STRENGTH CIRCUIT",
+                        5: "HARD CARDIO", 6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_intenso_5dias.get(dia, "ENTRENAMIENTO")
 
-        if self.usuario.objetivo in ["Adelgazar", "Mejorar resistencia"]:
-            return tipos_cardio.get(dia, "ENTRENAMIENTO")
-        else:
-            return tipos_push_pull_legs.get(dia, "ENTRENAMIENTO")
+            elif self.usuario.disponibilidad == "Solo fines de semana":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_adelgazar_sedentario_finde = {
+                        1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "EASY FULL BODY",
+                        7: "LIGHT CARDIO"
+                    }
+                    return tipos_adelgazar_sedentario_finde.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_adelgazar_activo_finde = {
+                        1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "CARDIO HIIT",
+                        7: "FULL BODY STRENGTH"
+                    }
+                    return tipos_adelgazar_activo_finde.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_adelgazar_sedentario_3dias = {
+                        1: "EASY CARDIO", 2: "DESCANSO", 3: "LIGHT STRENGTH", 4: "DESCANSO", 5: "EASY CARDIO",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_sedentario_3dias.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_adelgazar_activo_3dias = {
+                        1: "CARDIO HIIT", 2: "DESCANSO", 3: "FULL BODY STRENGTH", 4: "DESCANSO", 5: "CARDIO HIIT",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_activo_3dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_adelgazar_sedentario_2dias = {
+                        1: "DESCANSO", 2: "EASY FULL BODY", 3: "DESCANSO", 4: "LIGHT CARDIO", 5: "DESCANSO",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_sedentario_2dias.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_adelgazar_activo_2dias = {
+                        1: "DESCANSO", 2: "CARDIO HIIT", 3: "DESCANSO", 4: "FULL BODY STRENGTH", 5: "DESCANSO",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_activo_2dias.get(dia, "ENTRENAMIENTO")
+
+            else:  # Todos los días (flexible)
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_adelgazar_sedentario_diario = {
+                        1: "EASY CARDIO", 2: "LIGHT STRENGTH", 3: "EASY CARDIO", 4: "LIGHT STRENGTH", 5: "EASY CARDIO",
+                        6: "YOGA", 7: "DESCANSO"
+                    }
+                    return tipos_adelgazar_sedentario_diario.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_adelgazar_activo_diario = {
+                        1: "CARDIO HIIT", 2: "FULL BODY STRENGTH", 3: "CARDIO BAJO", 4: "UPPER BODY", 5: "CARDIO HIIT",
+                        6: "LOWER BODY", 7: "YOGA"
+                    }
+                    return tipos_adelgazar_activo_diario.get(dia, "ENTRENAMIENTO")
+
+        # GANAR MASA MUSCULAR
+        elif self.usuario.objetivo == "Ganar masa muscular":
+            if self.usuario.disponibilidad == "Lunes a Viernes (mañanas)" or self.usuario.disponibilidad == "Lunes a Viernes (tardes)":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_masa_sedentario_5dias = {
+                        1: "UPPER BODY", 2: "LOWER BODY", 3: "PUSH DAY", 4: "PULL DAY", 5: "LEGS DAY", 6: "DESCANSO",
+                        7: "DESCANSO"
+                    }
+                    return tipos_masa_sedentario_5dias.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_masa_activo_5dias = {
+                        1: "PUSH DAY", 2: "PULL DAY", 3: "LEGS DAY", 4: "PUSH DAY", 5: "PULL DAY", 6: "DESCANSO",
+                        7: "DESCANSO"
+                    }
+                    return tipos_masa_activo_5dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Solo fines de semana":
+                tipos_masa_finde = {
+                    1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "FULL BODY STRENGTH",
+                    7: "FULL BODY POWER"
+                }
+                return tipos_masa_finde.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
+                tipos_masa_3dias = {
+                    1: "FULL BODY STRENGTH", 2: "DESCANSO", 3: "UPPER BODY", 4: "DESCANSO", 5: "LOWER BODY",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_masa_3dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
+                tipos_masa_2dias = {
+                    1: "DESCANSO", 2: "FULL BODY STRENGTH", 3: "DESCANSO", 4: "FULL BODY POWER", 5: "DESCANSO",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_masa_2dias.get(dia, "ENTRENAMIENTO")
+
+            else:  # Todos los días
+                tipos_masa_diario = {
+                    1: "PUSH DAY", 2: "PULL DAY", 3: "LEGS DAY", 4: "PUSH DAY", 5: "PULL DAY", 6: "LEGS DAY",
+                    7: "DESCANSO"
+                }
+                return tipos_masa_diario.get(dia, "ENTRENAMIENTO")
+
+        # MANTENER PESO
+        elif self.usuario.objetivo == "Mantener peso":
+            if self.usuario.disponibilidad == "Lunes a Viernes (mañanas)" or self.usuario.disponibilidad == "Lunes a Viernes (tardes)":
+                tipos_mantener_5dias = {
+                    1: "FULL BODY STRENGTH", 2: "CARDIO BAJO", 3: "UPPER BODY", 4: "CARDIO BAJO", 5: "LOWER BODY",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_mantener_5dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Solo fines de semana":
+                tipos_mantener_finde = {
+                    1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "FULL BODY STRENGTH",
+                    7: "CARDIO BAJO"
+                }
+                return tipos_mantener_finde.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
+                tipos_mantener_3dias = {
+                    1: "FULL BODY STRENGTH", 2: "DESCANSO", 3: "CARDIO BAJO", 4: "DESCANSO", 5: "FULL BODY STRENGTH",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_mantener_3dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
+                tipos_mantener_2dias = {
+                    1: "DESCANSO", 2: "FULL BODY STRENGTH", 3: "DESCANSO", 4: "CARDIO BAJO", 5: "DESCANSO",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_mantener_2dias.get(dia, "ENTRENAMIENTO")
+
+            else:  # Todos los días
+                tipos_mantener_diario = {
+                    1: "FULL BODY STRENGTH", 2: "CARDIO BAJO", 3: "UPPER BODY", 4: "CARDIO BAJO", 5: "LOWER BODY",
+                    6: "YOGA", 7: "DESCANSO"
+                }
+                return tipos_mantener_diario.get(dia, "ENTRENAMIENTO")
+
+        # MEJORAR RESISTENCIA
+        elif self.usuario.objetivo == "Mejorar resistencia":
+            if self.usuario.disponibilidad == "Lunes a Viernes (mañanas)" or self.usuario.disponibilidad == "Lunes a Viernes (tardes)":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_resistencia_sedentario_5dias = {
+                        1: "CARDIO BAJO", 2: "LIGHT STRENGTH", 3: "CARDIO BAJO", 4: "LIGHT STRENGTH", 5: "CARDIO BAJO",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_resistencia_sedentario_5dias.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_resistencia_activo_5dias = {
+                        1: "CARDIO HIIT", 2: "STRENGTH ENDURANCE", 3: "CARDIO BAJO", 4: "STRENGTH ENDURANCE",
+                        5: "CARDIO HIIT", 6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_resistencia_activo_5dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Solo fines de semana":
+                tipos_resistencia_finde = {
+                    1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "CARDIO HIIT",
+                    7: "CARDIO BAJO"
+                }
+                return tipos_resistencia_finde.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
+                tipos_resistencia_3dias = {
+                    1: "CARDIO HIIT", 2: "DESCANSO", 3: "STRENGTH ENDURANCE", 4: "DESCANSO", 5: "CARDIO BAJO",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_resistencia_3dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
+                tipos_resistencia_2dias = {
+                    1: "DESCANSO", 2: "CARDIO HIIT", 3: "DESCANSO", 4: "STRENGTH ENDURANCE", 5: "DESCANSO",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_resistencia_2dias.get(dia, "ENTRENAMIENTO")
+
+            else:  # Todos los días
+                tipos_resistencia_diario = {
+                    1: "CARDIO HIIT", 2: "STRENGTH ENDURANCE", 3: "CARDIO BAJO", 4: "STRENGTH ENDURANCE",
+                    5: "CARDIO HIIT", 6: "CARDIO BAJO", 7: "YOGA"
+                }
+                return tipos_resistencia_diario.get(dia, "ENTRENAMIENTO")
+
+        # TONIFICAR
+        elif self.usuario.objetivo == "Tonificar":
+            if self.usuario.disponibilidad == "Lunes a Viernes (mañanas)" or self.usuario.disponibilidad == "Lunes a Viernes (tardes)":
+                if self.usuario.estilo_vida == "Sedentario (poco o nada de ejercicio)":
+                    tipos_tonificar_sedentario_5dias = {
+                        1: "TONING UPPER", 2: "EASY CARDIO", 3: "TONING LOWER", 4: "EASY CARDIO", 5: "TONING FULL",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_tonificar_sedentario_5dias.get(dia, "ENTRENAMIENTO")
+                else:
+                    tipos_tonificar_activo_5dias = {
+                        1: "TONING CIRCUIT", 2: "CARDIO HIIT", 3: "TONING UPPER", 4: "CARDIO BAJO", 5: "TONING LOWER",
+                        6: "DESCANSO", 7: "DESCANSO"
+                    }
+                    return tipos_tonificar_activo_5dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Solo fines de semana":
+                tipos_tonificar_finde = {
+                    1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "TONING CIRCUIT",
+                    7: "CARDIO BAJO"
+                }
+                return tipos_tonificar_finde.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
+                tipos_tonificar_3dias = {
+                    1: "TONING UPPER", 2: "DESCANSO", 3: "TONING LOWER", 4: "DESCANSO", 5: "TONING FULL", 6: "DESCANSO",
+                    7: "DESCANSO"
+                }
+                return tipos_tonificar_3dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
+                tipos_tonificar_2dias = {
+                    1: "DESCANSO", 2: "TONING CIRCUIT", 3: "DESCANSO", 4: "CARDIO BAJO", 5: "DESCANSO", 6: "DESCANSO",
+                    7: "DESCANSO"
+                }
+                return tipos_tonificar_2dias.get(dia, "ENTRENAMIENTO")
+
+            else:  # Todos los días
+                tipos_tonificar_diario = {
+                    1: "TONING UPPER", 2: "CARDIO BAJO", 3: "TONING LOWER", 4: "CARDIO BAJO", 5: "TONING FULL",
+                    6: "YOGA", 7: "DESCANSO"
+                }
+                return tipos_tonificar_diario.get(dia, "ENTRENAMIENTO")
+
+        # PREPARACIÓN PARA COMPETICIÓN
+        elif self.usuario.objetivo == "Preparación para competición":
+            if self.usuario.disponibilidad == "Lunes a Viernes (mañanas)" or self.usuario.disponibilidad == "Lunes a Viernes (tardes)":
+                tipos_competicion_5dias = {
+                    1: "PUSH DAY", 2: "PULL DAY", 3: "LEGS DAY", 4: "PUSH DAY", 5: "PULL DAY", 6: "DESCANSO",
+                    7: "DESCANSO"
+                }
+                return tipos_competicion_5dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Solo fines de semana":
+                tipos_competicion_finde = {
+                    1: "DESCANSO", 2: "DESCANSO", 3: "DESCANSO", 4: "DESCANSO", 5: "DESCANSO", 6: "FULL BODY POWER",
+                    7: "COMPETITION PREP"
+                }
+                return tipos_competicion_finde.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Lunes, Miércoles y Viernes (todo el día)":
+                tipos_competicion_3dias = {
+                    1: "FULL BODY POWER", 2: "DESCANSO", 3: "COMPETITION PREP", 4: "DESCANSO", 5: "FULL BODY STRENGTH",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_competicion_3dias.get(dia, "ENTRENAMIENTO")
+
+            elif self.usuario.disponibilidad == "Martes y Jueves (todo el día)":
+                tipos_competicion_2dias = {
+                    1: "DESCANSO", 2: "FULL BODY POWER", 3: "DESCANSO", 4: "COMPETITION PREP", 5: "DESCANSO",
+                    6: "DESCANSO", 7: "DESCANSO"
+                }
+                return tipos_competicion_2dias.get(dia, "ENTRENAMIENTO")
+
+            else:  # Todos los días
+                tipos_competicion_diario = {
+                    1: "PUSH DAY", 2: "PULL DAY", 3: "LEGS DAY", 4: "PUSH DAY", 5: "PULL DAY", 6: "LEGS DAY",
+                    7: "COMPETITION PREP"
+                }
+                return tipos_competicion_diario.get(dia, "ENTRENAMIENTO")
+
+        # Fallback
+        return "ENTRENAMIENTO"
 
     def configurar_ejercicios_actuales(self, tipo_sesion):
         """Configura la lista de ejercicios para la sesión actual."""
-        ejercicios = self.obtener_ejercicios_por_tipo(tipo_sesion)
+        ejercicios = self.obtener_ejercicios_por_tipo_completo(tipo_sesion)
 
         # Limpiar la lista actual
         self.lista_ejercicios_actuales.clear()
@@ -788,59 +1376,589 @@ class MainScreen(QMainWindow):
             item = QListWidgetItem(ejercicio)
             self.lista_ejercicios_actuales.addItem(item)
 
-    def obtener_ejercicios_por_tipo(self, tipo_sesion):
-        """Retorna una lista de ejercicios según el tipo de sesión."""
-        ejercicios_por_tipo = {
-            "PULL DAY": [
-                "Pull-ups - 3x8-12",
-                "Remo con barra - 3x8-10",
-                "Dominadas asistidas - 3x6-8",
-                "Curl de bíceps - 3x10-12",
-                "Remo con mancuernas - 3x8-10"
-            ],
-            "PUSH DAY": [
-                "Press de banca - 3x8-10",
-                "Press militar - 3x8-10",
-                "Flexiones - 3x10-15",
-                "Fondos en paralelas - 3x8-12",
-                "Press inclinado - 3x8-10"
-            ],
-            "LEGS DAY": [
-                "Sentadillas - 3x10-12",
-                "Peso muerto - 3x6-8",
-                "Prensa de piernas - 3x12-15",
-                "Zancadas - 3x10 c/pierna",
-                "Elevación de gemelos - 3x15-20"
-            ],
-            "CARDIO HIIT": [
-                "Calentamiento - 5 min",
-                "Burpees - 30s ON/30s OFF x8",
-                "Mountain climbers - 30s ON/30s OFF x8",
-                "Jumping jacks - 30s ON/30s OFF x8",
-                "Enfriamiento - 5 min"
-            ],
-            "CARDIO BAJO": [
-                "Caminata rápida - 30 min",
-                "Bicicleta estática - 20 min",
-                "Elíptica - 15 min",
-                "Estiramientos - 10 min"
-            ],
-            "FUERZA": [
-                "Sentadilla con peso - 4x6-8",
-                "Press de banca - 4x6-8",
-                "Peso muerto - 4x5-6",
-                "Press militar - 3x6-8",
-                "Remo con barra - 3x6-8"
-            ],
-            "DESCANSO": [
-                "Día de descanso activo",
-                "Estiramientos suaves - 15 min",
-                "Caminata ligera - 20 min",
-                "Movilidad articular - 10 min"
-            ]
-        }
+    def obtener_ejercicios_por_tipo_completo(self, tipo_sesion):
+        """Retorna una lista de ejercicios según el tipo de sesión y lugar de entrenamiento."""
 
-        return ejercicios_por_tipo.get(tipo_sesion, ["Entrenamiento personalizado"])
+        # Determinar ejercicios según lugar de entrenamiento
+        ejercicios_por_tipo = {}
+
+        if self.usuario.lugar_entrenamiento == "Casa sin equipamiento":
+            ejercicios_por_tipo = {
+                "PULL DAY": [
+                    "Pull-ups en barra de puerta - 3x8-12",
+                    "Remo invertido con mesa - 3x8-10",
+                    "Superman - 3x12-15",
+                    "Plancha inversa - 3x30s",
+                    "Curl de bíceps isométrico - 3x10"
+                ],
+                "PUSH DAY": [
+                    "Flexiones - 3x10-15",
+                    "Flexiones diamante - 3x6-10",
+                    "Pike push-ups - 3x8-12",
+                    "Fondos en silla - 3x8-12",
+                    "Flexiones inclinadas - 3x10-12"
+                ],
+                "LEGS DAY": [
+                    "Sentadillas - 3x15-20",
+                    "Zancadas - 3x12 c/pierna",
+                    "Sentadilla sumo - 3x15-18",
+                    "Elevación de gemelos - 3x20-25",
+                    "Glute bridge - 3x15-20"
+                ],
+                "CARDIO HIIT": [
+                    "Calentamiento - 5 min",
+                    "Burpees - 30s ON/30s OFF x8",
+                    "Mountain climbers - 30s ON/30s OFF x8",
+                    "Jumping jacks - 30s ON/30s OFF x8",
+                    "Enfriamiento - 5 min"
+                ],
+                "HARD CARDIO": [
+                    "Calentamiento - 5 min",
+                    "Burpees - 45s ON/15s OFF x10",
+                    "Mountain climbers - 45s ON/15s OFF x10",
+                    "High knees - 45s ON/15s OFF x10",
+                    "Squat jumps - 45s ON/15s OFF x10",
+                    "Enfriamiento - 5 min"
+                ],
+                "EASY CARDIO": [
+                    "Marcha en el sitio - 15 min",
+                    "Jumping jacks suaves - 2x30s",
+                    "Estiramientos dinámicos - 10 min",
+                    "Respiración profunda - 5 min"
+                ],
+                "CARDIO BAJO": [
+                    "Marcha en el sitio - 20 min",
+                    "Estiramientos - 10 min",
+                    "Movimientos articulares - 10 min"
+                ],
+                "LIGHT STRENGTH": [
+                    "Sentadillas - 2x10-12",
+                    "Flexiones de rodillas - 2x8-10",
+                    "Plancha - 2x20s",
+                    "Glute bridge - 2x12-15"
+                ],
+                "FULL BODY STRENGTH": [
+                    "Sentadillas - 3x12-15",
+                    "Flexiones - 3x8-12",
+                    "Plancha - 3x30s",
+                    "Zancadas - 3x10 c/pierna",
+                    "Glute bridge - 3x12-15"
+                ],
+                "UPPER BODY": [
+                    "Flexiones - 3x10-12",
+                    "Pike push-ups - 3x8-10",
+                    "Plancha - 3x30s",
+                    "Superman - 3x12-15"
+                ],
+                "LOWER BODY": [
+                    "Sentadillas - 3x15-18",
+                    "Zancadas - 3x12 c/pierna",
+                    "Glute bridge - 3x15-18",
+                    "Elevación de gemelos - 3x20"
+                ],
+                "STRENGTH CIRCUIT": [
+                    "Circuito: Flexiones + Sentadillas + Plancha - 3 rondas",
+                    "30s trabajo/15s descanso por ejercicio",
+                    "Descanso 2min entre rondas"
+                ],
+                "STRENGTH ENDURANCE": [
+                    "Sentadillas - 4x20",
+                    "Flexiones - 4x15",
+                    "Plancha - 4x45s",
+                    "Mountain climbers - 4x30s"
+                ],
+                "TONING UPPER": [
+                    "Flexiones lentas - 3x8-10",
+                    "Plancha lateral - 3x20s c/lado",
+                    "Superman - 3x12-15",
+                    "Flexiones diamante - 2x5-8"
+                ],
+                "TONING LOWER": [
+                    "Sentadillas lentas - 3x12-15",
+                    "Zancadas estáticas - 3x10 c/pierna",
+                    "Glute bridge - 3x15-18",
+                    "Calf raises - 3x20"
+                ],
+                "TONING FULL": [
+                    "Burpees lentos - 3x8-10",
+                    "Plancha con movimiento - 3x30s",
+                    "Sentadilla a flexión - 3x8-10"
+                ],
+                "TONING CIRCUIT": [
+                    "Circuito tonificación - 3 rondas",
+                    "Sentadillas + Flexiones + Plancha",
+                    "45s trabajo/15s descanso"
+                ],
+                "EASY FULL BODY": [
+                    "Sentadillas suaves - 2x10",
+                    "Flexiones de rodillas - 2x8",
+                    "Plancha - 2x20s",
+                    "Estiramientos - 10 min"
+                ],
+                "FULL BODY POWER": [
+                    "Squat jumps - 3x10-12",
+                    "Burpees - 3x8-10",
+                    "Mountain climbers - 3x30s",
+                    "Plank to downward dog - 3x10"
+                ],
+                "COMPETITION PREP": [
+                    "Rutina específica competición - 45 min",
+                    "Técnica y precisión - 20 min",
+                    "Resistencia específica - 15 min",
+                    "Estiramientos - 10 min"
+                ],
+                "YOGA": [
+                    "Saludo al sol - 5 rondas",
+                    "Posturas de pie - 10 min",
+                    "Posturas sentado - 10 min",
+                    "Relajación - 10 min"
+                ],
+                "DESCANSO": [
+                    "Día de descanso activo",
+                    "Estiramientos suaves - 15 min",
+                    "Meditación - 10 min",
+                    "Movilidad articular - 10 min"
+                ],
+                # Añadir los nuevos tipos de entrenamiento
+                "PUSH HEAVY": [
+                    "Flexiones diamante - 4x8-12",
+                    "Flexiones archer - 3x6 c/lado",
+                    "Flexiones elevadas (pies) - 4x8-10",
+                    "Handstand push-ups asistidas - 3x5-8",
+                    "Fondos en silla - 4x10-12",
+                    "Pike push-ups - 3x8-10"
+                ],
+                "PULL HEAVY": [
+                    "Dominadas en barra de puerta - 4x6-10",
+                    "Remo invertido bajo mesa - 4x8-12",
+                    "Superman - 4x12-15",
+                    "Reverse flies acostado - 3x15",
+                    "Wall angels - 3x20",
+                    "Isométrico de dominada - 3x20s"
+                ],
+                "LEGS HEAVY": [
+                    "Sentadillas pistol asistidas - 3x5 c/pierna",
+                    "Sentadillas con salto - 4x12-15",
+                    "Zancadas bulgáras - 3x10 c/pierna",
+                    "Single leg deadlift - 3x8 c/pierna",
+                    "Wall sit - 4x45s",
+                    "Elevación de pantorrillas - 4x20"
+                ],
+                "HIIT EXTREME": [
+                    "Burpees - 40s ON/20s OFF x8",
+                    "Sentadillas con salto - 30s ON/10s OFF x10",
+                    "Mountain climbers - 45s ON/15s OFF x6",
+                    "High knees - 20s ON/10s OFF x12",
+                    "Jumping lunges - 30s ON/30s OFF x8"
+                ],
+                "BASIC STRENGTH": [
+                    "Flexiones - 3x8-12",
+                    "Sentadillas - 3x12-15",
+                    "Plancha - 3x30s",
+                    "Glute bridge - 3x12-15",
+                    "Wall sit - 3x30s",
+                    "Superman - 3x10-12"
+                ]
+            }
+
+        elif self.usuario.lugar_entrenamiento == "Casa con equipamiento":
+            ejercicios_por_tipo = {
+                "PULL DAY": [
+                    "Remo con mancuernas - 3x8-12",
+                    "Pull-ups asistidas - 3x6-8",
+                    "Curl de bíceps - 3x10-12",
+                    "Face pulls con banda - 3x12-15",
+                    "Peso muerto rumano - 3x8-10"
+                ],
+                "PUSH DAY": [
+                    "Press de pecho con mancuernas - 3x8-10",
+                    "Press militar con mancuernas - 3x8-10",
+                    "Flexiones con peso - 3x10-12",
+                    "Press inclinado - 3x8-10",
+                    "Extensiones de tríceps - 3x10-12"
+                ],
+                "LEGS DAY": [
+                    "Sentadillas con mancuernas - 3x12-15",
+                    "Peso muerto - 3x8-10",
+                    "Zancadas con peso - 3x10 c/pierna",
+                    "Elevación de gemelos con peso - 3x15-20",
+                    "Sentadilla búlgara - 3x8 c/pierna"
+                ],
+                "CARDIO HIIT": [
+                    "Calentamiento - 5 min",
+                    "Thrusters con mancuernas - 30s ON/30s OFF x8",
+                    "Burpees - 30s ON/30s OFF x8",
+                    "Swings con kettlebell - 30s ON/30s OFF x8",
+                    "Enfriamiento - 5 min"
+                ],
+                "HARD CARDIO": [
+                    "Calentamiento - 5 min",
+                    "Thrusters - 45s ON/15s OFF x10",
+                    "Burpees con peso - 45s ON/15s OFF x10",
+                    "Swings pesados - 45s ON/15s OFF x10",
+                    "Mountain climbers - 45s ON/15s OFF x10",
+                    "Enfriamiento - 5 min"
+                ],
+                "EASY CARDIO": [
+                    "Caminata en cinta - 20 min",
+                    "Movimientos con mancuernas ligeras - 10 min",
+                    "Estiramientos con banda - 10 min"
+                ],
+                "CARDIO BAJO": [
+                    "Caminata en cinta - 25 min",
+                    "Ejercicios con banda elástica - 15 min",
+                    "Estiramientos - 10 min"
+                ],
+                "LIGHT STRENGTH": [
+                    "Goblet squat - 2x10-12",
+                    "Press de pecho ligero - 2x8-10",
+                    "Remo con mancuerna - 2x8-10",
+                    "Plancha - 2x30s"
+                ],
+                "FULL BODY STRENGTH": [
+                    "Goblet squat - 3x12-15",
+                    "Press de pecho con mancuernas - 3x8-12",
+                    "Remo con mancuernas - 3x8-12",
+                    "Press militar - 3x8-10",
+                    "Peso muerto rumano - 3x10-12"
+                ],
+                "UPPER BODY": [
+                    "Press de pecho - 3x10-12",
+                    "Remo con mancuernas - 3x10-12",
+                    "Press militar - 3x8-10",
+                    "Curl de bíceps - 3x10-12",
+                    "Extensiones de tríceps - 3x10-12"
+                ],
+                "LOWER BODY": [
+                    "Sentadillas con peso - 3x12-15",
+                    "Peso muerto rumano - 3x10-12",
+                    "Zancadas con mancuernas - 3x10 c/pierna",
+                    "Elevación de gemelos - 3x15-20",
+                    "Hip thrust - 3x12-15"
+                ],
+                "STRENGTH CIRCUIT": [
+                    "Circuito con mancuernas - 3 rondas",
+                    "Thrusters + Remo + Sentadillas",
+                    "45s trabajo/15s descanso por ejercicio"
+                ],
+                "STRENGTH ENDURANCE": [
+                    "Thrusters - 4x15-20",
+                    "Remo con mancuernas - 4x15-20",
+                    "Goblet squat - 4x20-25",
+                    "Swings con kettlebell - 4x30s"
+                ],
+                "TONING UPPER": [
+                    "Press de pecho controlado - 3x12-15",
+                    "Remo con pausa - 3x12-15",
+                    "Elevaciones laterales - 3x12-15",
+                    "Curl de bíceps lento - 3x12-15"
+                ],
+                "TONING LOWER": [
+                    "Sentadillas con pausa - 3x15-18",
+                    "Peso muerto lento - 3x12-15",
+                    "Zancadas estáticas - 3x12 c/pierna",
+                    "Hip thrust con pausa - 3x15-18"
+                ],
+                "TONING FULL": [
+                    "Thrusters lentos - 3x10-12",
+                    "Remo a sentadilla - 3x10-12",
+                    "Burpees con mancuernas - 3x8-10"
+                ],
+                "TONING CIRCUIT": [
+                    "Circuito tonificación con peso - 3 rondas",
+                    "Movimientos controlados y lentos",
+                    "45s trabajo/15s descanso"
+                ],
+                "EASY FULL BODY": [
+                    "Goblet squat ligero - 2x10",
+                    "Press de pecho suave - 2x8",
+                    "Remo ligero - 2x8",
+                    "Estiramientos con banda - 10 min"
+                ],
+                "FULL BODY POWER": [
+                    "Thrusters explosivos - 3x8-10",
+                    "Swings pesados - 3x12-15",
+                    "Burpees con peso - 3x6-8",
+                    "Clean and press - 3x6-8"
+                ],
+                "COMPETITION PREP": [
+                    "Rutina específica con peso - 45 min",
+                    "Técnica avanzada - 20 min",
+                    "Potencia y velocidad - 15 min",
+                    "Recuperación activa - 10 min"
+                ],
+                "YOGA": [
+                    "Saludo al sol - 5 rondas",
+                    "Posturas con apoyo - 15 min",
+                    "Flexibilidad profunda - 15 min",
+                    "Relajación - 10 min"
+                ],
+                "DESCANSO": [
+                    "Día de descanso activo",
+                    "Estiramientos con banda - 15 min",
+                    "Foam rolling - 10 min",
+                    "Movilidad articular - 10 min"
+                ],
+                # Añadir los nuevos tipos de entrenamiento
+                "PUSH HEAVY": [
+                    "Press con mancuernas en suelo - 5x6-8",
+                    "Press militar con mancuernas - 4x6-8",
+                    "Flexiones con mancuernas - 4x8-10",
+                    "Elevaciones laterales - 3x10-12",
+                    "Press francés con mancuernas - 3x8-10",
+                    "Fondos en silla - 3x10-12"
+                ],
+                "PULL HEAVY": [
+                    "Peso muerto con mancuernas - 5x6-8",
+                    "Remo inclinado con mancuernas - 4x8-10",
+                    "Pullover con mancuerna - 3x10-12",
+                    "Curl con mancuernas - 4x8-10",
+                    "Remo unilateral - 3x8-10 c/brazo",
+                    "Shrugs con mancuernas - 3x12-15"
+                ],
+                "HIIT MODERATE": [
+                    "Burpees modificados - 30s ON/30s OFF x6",
+                    "Sentadillas con salto - 20s ON/40s OFF x8",
+                    "Mountain climbers - 30s ON/30s OFF x6",
+                    "Jumping jacks - 45s ON/15s OFF x6"
+                ]
+            }
+
+        else:  # Gimnasio
+            ejercicios_por_tipo = {
+                "PULL DAY": [
+                    "Pull-ups - 3x8-12",
+                    "Remo con barra - 3x8-10",
+                    "Dominadas asistidas - 3x6-8",
+                    "Curl de bíceps - 3x10-12",
+                    "Remo con cable - 3x10-12",
+                    "Face pulls - 3x12-15"
+                ],
+                "PUSH DAY": [
+                    "Press de banca - 3x8-10",
+                    "Press militar - 3x8-10",
+                    "Press inclinado - 3x8-10",
+                    "Fondos en paralelas - 3x8-12",
+                    "Press francés - 3x10-12",
+                    "Elevaciones laterales - 3x12-15"
+                ],
+                "LEGS DAY": [
+                    "Sentadillas - 3x10-12",
+                    "Peso muerto - 3x6-8",
+                    "Prensa de piernas - 3x12-15",
+                    "Zancadas - 3x10 c/pierna",
+                    "Curl femoral - 3x10-12",
+                    "Elevación de gemelos - 3x15-20"
+                ],
+                "CARDIO HIIT": [
+                    "Calentamiento en cinta - 5 min",
+                    "Sprints en cinta - 30s ON/90s OFF x8",
+                    "Burpees - 30s ON/30s OFF x6",
+                    "Battle ropes - 30s ON/30s OFF x6",
+                    "Enfriamiento - 5 min"
+                ],
+                "HARD CARDIO": [
+                    "Calentamiento - 5 min",
+                    "Sprints intensos - 45s ON/15s OFF x12",
+                    "Battle ropes - 45s ON/15s OFF x8",
+                    "Box jumps - 45s ON/15s OFF x8",
+                    "Rowing machine - 45s ON/15s OFF x8",
+                    "Enfriamiento - 5 min"
+                ],
+                "EASY CARDIO": [
+                    "Caminata en cinta - 25 min",
+                    "Bicicleta estática suave - 15 min",
+                    "Estiramientos en colchoneta - 10 min"
+                ],
+                "CARDIO BAJO": [
+                    "Caminata en cinta - 30 min",
+                    "Bicicleta estática - 20 min",
+                    "Elíptica - 15 min",
+                    "Estiramientos - 10 min"
+                ],
+                "LIGHT STRENGTH": [
+                    "Sentadilla en multipower - 2x10-12",
+                    "Press de pecho en máquina - 2x8-10",
+                    "Remo en máquina - 2x8-10",
+                    "Leg press ligero - 2x12-15"
+                ],
+                "FULL BODY STRENGTH": [
+                    "Sentadillas - 3x8-10",
+                    "Press de banca - 3x8-10",
+                    "Peso muerto - 3x6-8",
+                    "Press militar - 3x8-10",
+                    "Remo con barra - 3x8-10"
+                ],
+                "UPPER BODY": [
+                    "Press de banca - 3x8-10",
+                    "Remo con barra - 3x8-10",
+                    "Press militar - 3x8-10",
+                    "Pull-ups - 3x6-10",
+                    "Fondos en paralelas - 3x8-12"
+                ],
+                "LOWER BODY": [
+                    "Sentadillas - 3x10-12",
+                    "Peso muerto rumano - 3x8-10",
+                    "Prensa de piernas - 3x12-15",
+                    "Curl femoral - 3x10-12",
+                    "Extensión de cuádriceps - 3x12-15"
+                ],
+                "STRENGTH CIRCUIT": [
+                    "Circuito estaciones - 4 rondas",
+                    "Kettlebell swings + Pull-ups + Thrusters + Box jumps",
+                    "45s trabajo/15s descanso por estación"
+                ],
+                "STRENGTH ENDURANCE": [
+                    "Thrusters con barra - 4x15-20",
+                    "Pull-ups - 4x máx repeticiones",
+                    "Burpees con barra - 4x12-15",
+                    "Rowing machine - 4x500m"
+                ],
+                "TONING UPPER": [
+                    "Press de pecho en máquina - 3x15-18",
+                    "Remo en polea - 3x15-18",
+                    "Elevaciones laterales - 3x15-18",
+                    "Curl de bíceps en cable - 3x15-18"
+                ],
+                "TONING LOWER": [
+                    "Leg press alto rep - 3x20-25",
+                    "Sentadillas en multipower - 3x18-20",
+                    "Curl femoral - 3x15-18",
+                    "Extensión de cuádriceps - 3x18-20"
+                ],
+                "TONING FULL": [
+                    "Circuito máquinas - 3 rondas",
+                    "12-15 reps por ejercicio",
+                    "Descanso mínimo entre ejercicios"
+                ],
+                "TONING CIRCUIT": [
+                    "Circuito funcional - 3 rondas",
+                    "Estaciones variadas gimnasio",
+                    "45s trabajo/15s descanso"
+                ],
+                "EASY FULL BODY": [
+                    "Máquinas básicas - 2x10 cada una",
+                    "Press de pecho + Remo + Leg press + Extensiones",
+                    "Estiramientos - 15 min"
+                ],
+                "FULL BODY POWER": [
+                    "Clean and press - 3x5-6",
+                    "Sentadilla con salto - 3x8-10",
+                    "Pull-ups explosivos - 3x5-8",
+                    "Thrusters pesados - 3x6-8"
+                ],
+                "COMPETITION PREP": [
+                    "Rutina específica competición - 60 min",
+                    "Técnica perfecta con peso - 25 min",
+                    "Potencia explosiva - 20 min",
+                    "Acondicionamiento específico - 15 min"
+                ],
+                "YOGA": [
+                    "Sala de yoga/estiramiento",
+                    "Vinyasa flow - 20 min",
+                    "Posturas de fuerza - 15 min",
+                    "Relajación profunda - 15 min"
+                ],
+                "DESCANSO": [
+                    "Día de descanso activo",
+                    "Sauna - 15 min",
+                    "Estiramientos en sala - 20 min",
+                    "Caminar en cinta suave - 15 min"
+                ],
+                # MASA MUSCULAR - GIMNASIO
+                "PUSH HEAVY": [
+                    "Press banca - 5x3-5 (peso alto)",
+                    "Press inclinado con mancuernas - 4x6-8",
+                    "Press militar - 4x5-6",
+                    "Fondos en paralelas - 4x8-10",
+                    "Press frances - 3x8-10",
+                    "Extensiones de tríceps en polea - 3x10-12"
+                ],
+                "PULL HEAVY": [
+                    "Peso muerto - 5x3-5 (peso alto)",
+                    "Dominadas con peso - 4x6-8",
+                    "Remo con barra - 4x6-8",
+                    "Pullover con mancuerna - 3x8-10",
+                    "Curl con barra - 4x8-10",
+                    "Curl martillo - 3x10-12"
+                ],
+                "LEGS HEAVY": [
+                    "Sentadilla - 5x5 (peso alto)",
+                    "Peso muerto rumano - 4x6-8",
+                    "Prensa de piernas - 4x12-15",
+                    "Zancadas con barra - 3x10 c/pierna",
+                    "Hip thrust - 4x10-12",
+                    "Elevación de gemelos - 4x15-20"
+                ],
+                "CHEST & TRICEPS": [
+                    "Press banca - 4x8-10",
+                    "Press inclinado - 4x8-10",
+                    "Aperturas con mancuernas - 3x10-12",
+                    "Fondos en paralelas - 3x10-12",
+                    "Press frances - 3x10-12",
+                    "Extensiones de tríceps - 3x12-15"
+                ],
+                "BACK & BICEPS": [
+                    "Dominadas - 4x8-12",
+                    "Remo con barra - 4x8-10",
+                    "Remo en polea baja - 3x10-12",
+                    "Pullover - 3x10-12",
+                    "Curl con barra - 4x10-12",
+                    "Curl concentrado - 3x12-15"
+                ],
+                "HIIT EXTREME": [
+                    "Sprint en cinta - 20s ON/10s OFF x12 rondas",
+                    "Burpees - 45s ON/15s OFF x8 rondas",
+                    "Battle ropes - 30s ON/30s OFF x10 rondas",
+                    "Box jumps - 40s ON/20s OFF x8 rondas",
+                    "Mountain climbers - 30s ON/10s OFF x10 rondas"
+                ],
+                "HIIT TABATA": [
+                    "Tabata Burpees - 20s ON/10s OFF x8",
+                    "Tabata Sentadillas - 20s ON/10s OFF x8",
+                    "Tabata Mountain climbers - 20s ON/10s OFF x8",
+                    "Tabata High knees - 20s ON/10s OFF x8"
+                ],
+                "ENDURANCE INTERVALS": [
+                    "Carrera intervalos - 5 min fácil/3 min fuerte x5",
+                    "Remo en máquina - 2000m tiempo",
+                    "Bicicleta spinning - 45 min con intervalos",
+                    "Escaladora - 20 min ritmo constante"
+                ],
+                "LONG CARDIO": [
+                    "Carrera continua - 45-60 min ritmo conversacional",
+                    "Bicicleta estática - 60 min intensidad media",
+                    "Elíptica - 40 min",
+                    "Natación - 30 min (si disponible)"
+                ],
+                "TONE UPPER": [
+                    "Press con mancuernas - 3x12-15",
+                    "Elevaciones laterales - 3x15",
+                    "Remo con mancuernas - 3x12-15",
+                    "Curl de bíceps - 3x15",
+                    "Extensiones de tríceps - 3x15",
+                    "Plancha - 3x45s"
+                ],
+                "TONE LOWER": [
+                    "Sentadillas con mancuernas - 3x15-20",
+                    "Zancadas - 3x12 c/pierna",
+                    "Hip thrust - 3x15",
+                    "Elevación de pantorrillas - 3x20",
+                    "Puente de glúteo - 3x15",
+                    "Wall sit - 3x45s"
+                ],
+                "POWER TRAINING": [
+                    "Power clean - 5x3",
+                    "Snatch - 5x2",
+                    "Box jumps explosivos - 5x5",
+                    "Medicine ball slams - 5x8",
+                    "Sprint 40m - 6 repeticiones",
+                    "Pliométricos específicos - 3 series"
+                ]
+            }
+
+        return ejercicios_por_tipo.get(tipo_sesion, [
+            "Entrenamiento personalizado - No se encontraron ejercicios para: " + tipo_sesion])
 
     def generar_notificaciones_personalizadas(self):
         """Genera notificaciones personalizadas según el usuario."""
@@ -862,39 +1980,15 @@ class MainScreen(QMainWindow):
                 notificaciones.append("NUTRICIÓN: Asegúrate de comer suficientes calorías")
 
         # Notificación general
-        notificaciones.append("HYDRATACIÓN: Recuerda beber agua regularmente")
+        notificaciones.append("HIDRATACIÓN: Recuerda beber agua regularmente")
 
         return notificaciones[:3]  # Máximo 3 notificaciones
 
     @pyqtSlot()
     def abrir_datos_perfil(self):
-        """Abre una ventana con los datos detallados del perfil."""
-        datos_perfil = f"""
-        DATOS DEL PERFIL
-
-        Nombre: {self.usuario.nombre}
-        Correo: {self.usuario.correo}
-        Teléfono: {self.usuario.telefono}
-        Edad: {self.usuario.edad} años
-        Género: {self.usuario.genero}
-        Peso: {self.usuario.peso} kg
-        Altura: {self.usuario.altura} cm
-
-        OBJETIVOS Y PREFERENCIAS
-
-        Objetivo: {self.usuario.objetivo}
-        Disponibilidad: {self.usuario.disponibilidad}
-        Estilo de vida: {self.usuario.estilo_vida}
-        Lugar de entrenamiento: {self.usuario.lugar_entrenamiento}
-        """
-
-        if hasattr(self.usuario, 'imc'):
-            datos_perfil += f"\nIMC: {self.usuario.imc} ({self.usuario.categoria_imc})"
-
-        if hasattr(self.usuario, 'recomendacion'):
-            datos_perfil += f"\nRecomendación: {self.usuario.recomendacion}"
-
-        QMessageBox.information(self, "Datos del Perfil", datos_perfil)
+        """Abre la ventana de edición de perfil del usuario."""
+        self.editar_perfil_window = EditarPerfilScreen(self.usuario, self)
+        self.editar_perfil_window.show()
 
     @pyqtSlot()
     def expandir_progreso(self):
@@ -903,8 +1997,269 @@ class MainScreen(QMainWindow):
         nivel_actual = (dias_uso // 30) + 1
 
 
-    
+class EditarPerfilScreen(QMainWindow):
+    def __init__(self, usuario, main_screen=None):
+        super(EditarPerfilScreen, self).__init__()
 
+        # Guardar referencia al usuario y a la pantalla principal
+        self.usuario = usuario
+        self.main_screen = main_screen
+
+        # Cargar el archivo UI (puedes usar el mismo de registro o crear uno específico)
+        uic.loadUi("editar_perfil_screen.ui", self)
+
+        # Inicializar el servicio de base de datos
+        self.db_service = BaseDatosGymSync()
+
+        # Cargar las opciones de los desplegables
+        self.cargar_opciones_objetivo()
+        self.cargar_disponibilidad_horaria()
+        self.cargar_estilos_vida()
+        self.cargar_lugar_entrenamiento()
+        self.cargar_genero()
+
+        # Cargar los datos actuales del usuario en los campos
+        self.cargar_datos_actuales()
+
+        # Conectar señales a slots
+        self.setupConnections()
+
+    def setupConnections(self):
+        """Configura las conexiones entre los widgets y los métodos."""
+        self.btn_guardar_cambios.clicked.connect(self.guardar_cambios)
+        self.btn_cancelar.clicked.connect(self.cancelar_edicion)
+        self.btn_salir.clicked.connect(self.cancelar_edicion)
+
+    def cargar_opciones_objetivo(self):
+        """Carga las opciones del desplegable de objetivos."""
+        objetivos = [
+            "Adelgazar",
+            "Mantener peso",
+            "Ganar masa muscular",
+            "Mejorar resistencia",
+            "Tonificar",
+            "Preparación para competición"
+        ]
+        self.cmb_objetivo.clear()
+        self.cmb_objetivo.addItems(objetivos)
+
+    def cargar_disponibilidad_horaria(self):
+        """Gestiona las opciones de disponibilidad para cada día de la semana."""
+        disponibilidad = [
+            "Lunes a Viernes (mañanas)",
+            "Lunes a Viernes (tardes)",
+            "Solo fines de semana",
+            "Lunes, Miércoles y Viernes (todo el día)",
+            "Martes y Jueves (todo el día)",
+            "Todos los días (flexible)"
+        ]
+        self.cmb_disponibilidad.clear()
+        self.cmb_disponibilidad.addItems(disponibilidad)
+
+    def cargar_estilos_vida(self):
+        """Carga las opciones de estilo de vida en el desplegable correspondiente."""
+        estilos_vida = [
+            "Sedentario (poco o nada de ejercicio)",
+            "Ligeramente activo (ejercicio ligero 1-3 días/semana)",
+            "Moderadamente activo (ejercicio moderado 3-5 días/semana)",
+            "Muy activo (ejercicio intenso 6-7 días/semana)",
+            "Extremadamente activo (ejercicio intenso diario o físicamente exigente)"
+        ]
+        self.cmb_estilo_vida.clear()
+        self.cmb_estilo_vida.addItems(estilos_vida)
+
+    def cargar_lugar_entrenamiento(self):
+        """Gestiona los lugares de entrenamiento."""
+        lugar_entrenamiento = [
+            "Casa sin equipamiento",
+            "Casa con equipamiento",
+            "Gimnasio"
+        ]
+        self.cmb_lugar_entrenamiento.clear()
+        self.cmb_lugar_entrenamiento.addItems(lugar_entrenamiento)
+
+    def cargar_genero(self):
+        """Gestiona los géneros."""
+        genero = [
+            "Masculino",
+            "Femenino",
+            "Otro"
+        ]
+        self.cmb_genero.clear()
+        self.cmb_genero.addItems(genero)
+
+    def cargar_datos_actuales(self):
+        """Carga los datos actuales del usuario en los campos del formulario."""
+        # Cargar datos de texto
+        self.txt_nombre.setText(self.usuario.nombre)
+        self.txt_correo.setText(self.usuario.correo)
+        self.txt_telefono.setText(self.usuario.telefono)
+        self.txt_edad.setText(str(self.usuario.edad))
+        self.txt_peso.setText(str(self.usuario.peso))
+        self.txt_altura.setText(str(self.usuario.altura))
+
+        # Cargar selecciones de los combobox
+        self.establecer_seleccion_combobox(self.cmb_genero, self.usuario.genero)
+        self.establecer_seleccion_combobox(self.cmb_objetivo, self.usuario.objetivo)
+        self.establecer_seleccion_combobox(self.cmb_disponibilidad, self.usuario.disponibilidad)
+        self.establecer_seleccion_combobox(self.cmb_estilo_vida, self.usuario.estilo_vida)
+        self.establecer_seleccion_combobox(self.cmb_lugar_entrenamiento, self.usuario.lugar_entrenamiento)
+
+        # Deshabilitar el campo de correo (no se puede cambiar)
+        self.txt_correo.setEnabled(False)
+        self.txt_correo.setStyleSheet("background-color: #f0f0f0; color: #666666;")
+
+    def establecer_seleccion_combobox(self, combobox, valor_actual):
+        """Establece la selección actual en un combobox basado en el valor."""
+        for i in range(combobox.count()):
+            if combobox.itemText(i) == valor_actual:
+                combobox.setCurrentIndex(i)
+                break
+
+    @pyqtSlot()
+    def guardar_cambios(self):
+        """Guarda los cambios realizados en el perfil del usuario."""
+        # Validar campos obligatorios
+        if not self.validar_campos_obligatorios():
+            return
+
+        # Verificar si se cambió la contraseña
+        nueva_contraseña = None
+        if hasattr(self, 'txt_nueva_contraseña') and self.txt_nueva_contraseña.text():
+            if hasattr(self, 'txt_confirmar_nueva_contraseña'):
+                if self.txt_nueva_contraseña.text() != self.txt_confirmar_nueva_contraseña.text():
+                    self.mostrar_error_validacion(
+                        "Error de contraseña",
+                        "Las contraseñas nuevas no coinciden."
+                    )
+                    return
+                nueva_contraseña = self.txt_nueva_contraseña.text()
+
+        try:
+            # Crear objeto usuario actualizado
+            usuario_actualizado = self.crear_objeto_usuario_actualizado(nueva_contraseña)
+
+            # Guardar cambios en la base de datos
+            if self.db_service.actualizar_usuario(usuario_actualizado):
+                # Actualizar el objeto usuario en memoria
+                self.actualizar_usuario_en_memoria(usuario_actualizado)
+
+                QMessageBox.information(
+                    self,
+                    "Cambios guardados",
+                    "Los cambios en tu perfil se han guardado correctamente."
+                )
+
+                # Actualizar la pantalla principal si existe referencia
+                if self.main_screen:
+                    self.main_screen.usuario = usuario_actualizado
+                    self.main_screen.configurar_pantalla_usuario()
+
+                # Cerrar ventana de edición
+                self.close()
+
+            else:
+                self.mostrar_error_validacion(
+                    "Error al guardar",
+                    "No se pudieron guardar los cambios. Inténtalo de nuevo."
+                )
+
+        except Exception as e:
+            self.mostrar_error_validacion(
+                "Error inesperado",
+                f"Ha ocurrido un error al guardar los cambios: {str(e)}"
+            )
+
+    def validar_campos_obligatorios(self):
+        """Verifica que todos los campos requeridos estén completados."""
+        # Validamos los campos de texto
+        campos_texto = {
+            "Nombre y apellidos": self.txt_nombre.text(),
+            "Número de teléfono": self.txt_telefono.text(),
+            "Edad": self.txt_edad.text(),
+            "Peso": self.txt_peso.text(),
+            "Altura": self.txt_altura.text()
+        }
+
+        # Verificar que no haya campos de texto vacíos
+        for campo, valor in campos_texto.items():
+            if not valor:
+                self.mostrar_error_validacion(
+                    "Campos incompletos",
+                    f"El campo '{campo}' es obligatorio. Por favor, complétalo."
+                )
+                return False
+
+        # Validamos que edad, peso y altura sean numéricos
+        try:
+            edad = int(campos_texto["Edad"])
+            if edad <= 0 or edad > 120:
+                raise ValueError("La edad debe estar entre 1 y 120 años.")
+
+            peso = float(campos_texto["Peso"])
+            if peso <= 0 or peso > 300:
+                raise ValueError("El peso debe estar entre 1 y 300 kg.")
+
+            altura = float(campos_texto["Altura"])
+            if altura <= 0 or altura > 250:
+                raise ValueError("La altura debe estar entre 1 y 250 cm.")
+
+        except ValueError as e:
+            self.mostrar_error_validacion("Formato incorrecto", str(e))
+            return False
+
+        return True
+
+    def crear_objeto_usuario_actualizado(self, nueva_contraseña=None):
+        """Crea un objeto Usuario con los datos actualizados del formulario."""
+        return Usuario(
+            correo=self.usuario.correo,  # El correo no cambia
+            contraseña=nueva_contraseña if nueva_contraseña else self.usuario.contraseña,
+            nombre=self.txt_nombre.text(),
+            telefono=self.txt_telefono.text(),
+            edad=int(self.txt_edad.text()),
+            genero=self.cmb_genero.currentText(),
+            peso=float(self.txt_peso.text()),
+            altura=float(self.txt_altura.text()),
+            objetivo=self.cmb_objetivo.currentText(),
+            disponibilidad=self.cmb_disponibilidad.currentText(),
+            estilo_vida=self.cmb_estilo_vida.currentText(),
+            lugar_entrenamiento=self.cmb_lugar_entrenamiento.currentText()
+        )
+
+    def actualizar_usuario_en_memoria(self, usuario_actualizado):
+        """Actualiza los datos del usuario en memoria."""
+        self.usuario.nombre = usuario_actualizado.nombre
+        self.usuario.telefono = usuario_actualizado.telefono
+        self.usuario.edad = usuario_actualizado.edad
+        self.usuario.genero = usuario_actualizado.genero
+        self.usuario.peso = usuario_actualizado.peso
+        self.usuario.altura = usuario_actualizado.altura
+        self.usuario.objetivo = usuario_actualizado.objetivo
+        self.usuario.disponibilidad = usuario_actualizado.disponibilidad
+        self.usuario.estilo_vida = usuario_actualizado.estilo_vida
+        self.usuario.lugar_entrenamiento = usuario_actualizado.lugar_entrenamiento
+
+        if usuario_actualizado.contraseña != self.usuario.contraseña:
+            self.usuario.contraseña = usuario_actualizado.contraseña
+
+    def mostrar_error_validacion(self, tipo_error, mensaje):
+        """Muestra errores específicos cuando la validación falla."""
+        QMessageBox.warning(self, tipo_error, mensaje)
+
+    @pyqtSlot()
+    def cancelar_edicion(self):
+        """Cancela la edición y vuelve a la pantalla principal."""
+        respuesta = QMessageBox.question(
+            self,
+            "Cancelar edición",
+            "¿Estás seguro de que quieres cancelar? Los cambios no guardados se perderán.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if respuesta == QMessageBox.Yes:
+            self.close()
 
 
 # Clase principal para manejar la navegación entre pantallas

@@ -71,7 +71,6 @@ QListWidget {
      <number>15</number>
     </property>
     <item>
-     <!-- SECCIÓN SUPERIOR: ENTRENAMIENTO -->
      <widget class="QFrame" name="frame_entrenamiento">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -90,7 +89,6 @@ QListWidget {
         <number>15</number>
        </property>
        <item>
-        <!-- SECCIÓN IZQUIERDA: SESIÓN ACTUAL -->
         <widget class="QFrame" name="frame_sesion_actual">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -103,16 +101,17 @@ QListWidget {
            <widget class="QLabel" name="lbl_dia_actual">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>28</pointsize>
               <weight>75</weight>
               <bold>true</bold>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
             <property name="text">
              <string>Lunes</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -120,16 +119,17 @@ QListWidget {
            <widget class="QLabel" name="lbl_tipo_sesion_actual">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>18</pointsize>
               <weight>50</weight>
               <bold>false</bold>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
             <property name="text">
              <string>PULL DAY</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -153,14 +153,14 @@ QListWidget {
               <height>80</height>
              </size>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
+            <property name="styleSheet">
+             <string>border: 2px dashed #ccc; color: #999;</string>
             </property>
             <property name="text">
              <string>[ICONO SESIÓN]</string>
             </property>
-            <property name="styleSheet">
-             <string>border: 2px dashed #ccc; color: #999;</string>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -178,7 +178,6 @@ QListWidget {
         </widget>
        </item>
        <item>
-        <!-- SECCIÓN DERECHA: PRÓXIMAS SESIONES -->
         <widget class="QFrame" name="frame_proximas_sesiones">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -191,21 +190,21 @@ QListWidget {
            <widget class="QLabel" name="lbl_titulo_proximas">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>14</pointsize>
               <weight>75</weight>
               <bold>true</bold>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
             <property name="text">
              <string>Próximas Sesiones</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
           <item>
-           <!-- PRÓXIMA SESIÓN 1 -->
            <widget class="QFrame" name="frame_proximo_1">
             <property name="frameShape">
              <enum>QFrame::Box</enum>
@@ -225,14 +224,14 @@ QListWidget {
                  <height>50</height>
                 </size>
                </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
+               <property name="styleSheet">
+                <string>border: 1px solid #ddd; color: #999;</string>
                </property>
                <property name="text">
                 <string>[ICO]</string>
                </property>
-               <property name="styleSheet">
-                <string>border: 1px solid #ddd; color: #999;</string>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
                </property>
               </widget>
              </item>
@@ -242,6 +241,7 @@ QListWidget {
                 <widget class="QLabel" name="lbl_dia_proximo1">
                  <property name="font">
                   <font>
+                   <family>Arial</family>
                    <pointsize>12</pointsize>
                    <weight>75</weight>
                    <bold>true</bold>
@@ -256,6 +256,7 @@ QListWidget {
                 <widget class="QLabel" name="lbl_tipo_sesion_proximo1">
                  <property name="font">
                   <font>
+                   <family>Arial</family>
                    <pointsize>10</pointsize>
                   </font>
                  </property>
@@ -270,7 +271,6 @@ QListWidget {
            </widget>
           </item>
           <item>
-           <!-- PRÓXIMA SESIÓN 2 -->
            <widget class="QFrame" name="frame_proximo_2">
             <property name="frameShape">
              <enum>QFrame::Box</enum>
@@ -290,14 +290,14 @@ QListWidget {
                  <height>50</height>
                 </size>
                </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
+               <property name="styleSheet">
+                <string>border: 1px solid #ddd; color: #999;</string>
                </property>
                <property name="text">
                 <string>[ICO]</string>
                </property>
-               <property name="styleSheet">
-                <string>border: 1px solid #ddd; color: #999;</string>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
                </property>
               </widget>
              </item>
@@ -307,6 +307,7 @@ QListWidget {
                 <widget class="QLabel" name="lbl_dia_proximo2">
                  <property name="font">
                   <font>
+                   <family>Arial</family>
                    <pointsize>12</pointsize>
                    <weight>75</weight>
                    <bold>true</bold>
@@ -321,6 +322,7 @@ QListWidget {
                 <widget class="QLabel" name="lbl_tipo_sesion_proximo2">
                  <property name="font">
                   <font>
+                   <family>Arial</family>
                    <pointsize>10</pointsize>
                   </font>
                  </property>
@@ -354,7 +356,6 @@ QListWidget {
      </widget>
     </item>
     <item>
-     <!-- SECCIÓN INFERIOR: PERFIL, PROGRESO Y NOTIFICACIONES -->
      <widget class="QFrame" name="frame_inferior">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -373,7 +374,6 @@ QListWidget {
         <number>15</number>
        </property>
        <item>
-        <!-- SECCIÓN PERFIL -->
         <widget class="QFrame" name="frame_perfil">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -386,20 +386,21 @@ QListWidget {
            <widget class="QLabel" name="lbl_titulo_perfil">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>14</pointsize>
               <weight>75</weight>
               <bold>true</bold>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
             <property name="text">
              <string>TU PERFIL</string>
             </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
            </widget>
           </item>
-          <item>
+          <item alignment="Qt::AlignHCenter">
            <widget class="QLabel" name="lbl_avatar_usuario">
             <property name="minimumSize">
              <size>
@@ -413,14 +414,14 @@ QListWidget {
               <height>80</height>
              </size>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
+            <property name="styleSheet">
+             <string>border: 2px solid #ddd; border-radius: 40px; color: #999;</string>
             </property>
             <property name="text">
              <string>[AVATAR]</string>
             </property>
-            <property name="styleSheet">
-             <string>border: 2px solid #ddd; border-radius: 40px; color: #999;</string>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -428,17 +429,18 @@ QListWidget {
            <widget class="QLabel" name="lbl_correo_usuario">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>10</pointsize>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
+            <property name="styleSheet">
+             <string>border: 1px solid #ddd; border-radius: 15px; padding: 8px; background-color: #f9f9f9;</string>
             </property>
             <property name="text">
              <string>usuario@gmail.com</string>
             </property>
-            <property name="styleSheet">
-             <string>border: 1px solid #ddd; border-radius: 15px; padding: 8px; background-color: #f9f9f9;</string>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -463,10 +465,13 @@ QListWidget {
            </spacer>
           </item>
          </layout>
+         <zorder>lbl_avatar_usuario</zorder>
+         <zorder>lbl_titulo_perfil</zorder>
+         <zorder>lbl_correo_usuario</zorder>
+         <zorder>btn_datos_perfil</zorder>
         </widget>
        </item>
        <item>
-        <!-- SECCIÓN PROGRESO -->
         <widget class="QFrame" name="frame_progreso">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -479,16 +484,17 @@ QListWidget {
            <widget class="QLabel" name="lbl_titulo_progreso">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>14</pointsize>
               <weight>75</weight>
               <bold>true</bold>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
             <property name="text">
              <string>PROGRESO</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -505,6 +511,7 @@ QListWidget {
              <widget class="QLabel" name="lbl_dias_uso">
               <property name="font">
                <font>
+                <family>Arial</family>
                 <weight>75</weight>
                 <bold>true</bold>
                </font>
@@ -528,6 +535,7 @@ QListWidget {
              <widget class="QLabel" name="lbl_dias_siguiente_nivel">
               <property name="font">
                <font>
+                <family>Arial</family>
                 <weight>75</weight>
                 <bold>true</bold>
                </font>
@@ -551,6 +559,7 @@ QListWidget {
              <widget class="QLabel" name="lbl_diferencia_peso">
               <property name="font">
                <font>
+                <family>Arial</family>
                 <weight>75</weight>
                 <bold>true</bold>
                </font>
@@ -567,9 +576,6 @@ QListWidget {
           </item>
           <item>
            <widget class="QPushButton" name="btn_expandir_progreso">
-            <property name="text">
-             <string>VER DETALLE</string>
-            </property>
             <property name="styleSheet">
              <string>QPushButton {
     background-color: #2196F3;
@@ -580,6 +586,9 @@ QPushButton:hover {
 QPushButton:pressed {
     background-color: #0D47A1;
 }</string>
+            </property>
+            <property name="text">
+             <string>VER DETALLE</string>
             </property>
            </widget>
           </item>
@@ -600,7 +609,6 @@ QPushButton:pressed {
         </widget>
        </item>
        <item>
-        <!-- SECCIÓN NOTIFICACIONES -->
         <widget class="QFrame" name="frame_notificaciones">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -613,16 +621,17 @@ QPushButton:pressed {
            <widget class="QLabel" name="lbl_titulo_notificaciones">
             <property name="font">
              <font>
+              <family>Arial</family>
               <pointsize>14</pointsize>
               <weight>75</weight>
               <bold>true</bold>
              </font>
             </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
             <property name="text">
              <string>NOTIFICACIONES</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
             </property>
            </widget>
           </item>
@@ -640,14 +649,15 @@ QPushButton:pressed {
               <widget class="QLabel" name="lbl_notif_1">
                <property name="font">
                 <font>
+                 <family>Arial</family>
                  <pointsize>10</pointsize>
                 </font>
                </property>
-               <property name="text">
-                <string>• ALERTA</string>
-               </property>
                <property name="styleSheet">
                 <string>color: white;</string>
+               </property>
+               <property name="text">
+                <string>• ALERTA</string>
                </property>
               </widget>
              </item>
@@ -655,14 +665,15 @@ QPushButton:pressed {
               <widget class="QLabel" name="lbl_notif_2">
                <property name="font">
                 <font>
+                 <family>Arial</family>
                  <pointsize>10</pointsize>
                 </font>
                </property>
-               <property name="text">
-                <string>• MENSAJE</string>
-               </property>
                <property name="styleSheet">
                 <string>color: white;</string>
+               </property>
+               <property name="text">
+                <string>• MENSAJE</string>
                </property>
               </widget>
              </item>
@@ -670,14 +681,15 @@ QPushButton:pressed {
               <widget class="QLabel" name="lbl_notif_3">
                <property name="font">
                 <font>
+                 <family>Arial</family>
                  <pointsize>10</pointsize>
                 </font>
                </property>
-               <property name="text">
-                <string>• GESTIÓN</string>
-               </property>
                <property name="styleSheet">
                 <string>color: white;</string>
+               </property>
+               <property name="text">
+                <string>• GESTIÓN</string>
                </property>
               </widget>
              </item>
@@ -711,7 +723,7 @@ QPushButton:pressed {
      <x>0</x>
      <y>0</y>
      <width>1200</width>
-     <height>22</height>
+     <height>26</height>
     </rect>
    </property>
   </widget>
