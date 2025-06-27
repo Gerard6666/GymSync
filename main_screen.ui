@@ -134,37 +134,6 @@ QListWidget {
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="lbl_icono_sesion_actual">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>80</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>16777215</width>
-              <height>80</height>
-             </size>
-            </property>
-            <property name="styleSheet">
-             <string>border: 2px dashed #ccc; color: #999;</string>
-            </property>
-            <property name="text">
-             <string>[ICONO SESIÓN]</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item>
            <widget class="QListWidget" name="lista_ejercicios_actuales">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -228,7 +197,13 @@ QListWidget {
                 <string>border: 1px solid #ddd; color: #999;</string>
                </property>
                <property name="text">
-                <string>[ICO]</string>
+                <string/>
+               </property>
+               <property name="pixmap">
+                <pixmap>../../Downloads/pngtree-blue-arrow-sign-right-png-image_9166227.png</pixmap>
+               </property>
+               <property name="scaledContents">
+                <bool>true</bool>
                </property>
                <property name="alignment">
                 <set>Qt::AlignCenter</set>
@@ -294,7 +269,13 @@ QListWidget {
                 <string>border: 1px solid #ddd; color: #999;</string>
                </property>
                <property name="text">
-                <string>[ICO]</string>
+                <string/>
+               </property>
+               <property name="pixmap">
+                <pixmap>../../Downloads/pngtree-blue-arrow-sign-right-png-image_9166227.png</pixmap>
+               </property>
+               <property name="scaledContents">
+                <bool>true</bool>
                </property>
                <property name="alignment">
                 <set>Qt::AlignCenter</set>
@@ -573,37 +554,6 @@ QListWidget {
              </widget>
             </item>
            </layout>
-          </item>
-          <item>
-           <widget class="QPushButton" name="btn_expandir_progreso">
-            <property name="styleSheet">
-             <string>QPushButton {
-    background-color: #2196F3;
-}
-QPushButton:hover {
-    background-color: #1976D2;
-}
-QPushButton:pressed {
-    background-color: #0D47A1;
-}</string>
-            </property>
-            <property name="text">
-             <string>VER DETALLE</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="verticalSpacer_progreso">
-            <property name="orientation">
-             <enum>Qt::Vertical</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>20</width>
-              <height>40</height>
-             </size>
-            </property>
-           </spacer>
           </item>
          </layout>
         </widget>
